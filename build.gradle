@@ -21,7 +21,7 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = 16
 }
 
-group = "gg.essential"
+group = "cc.woverflow"
 archivesBaseName = project.name
 def baseVersion = '0.10.0'
 def runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "9999"
@@ -39,16 +39,7 @@ if (!isSnapshot) {
 logger.lifecycle(":building plugin v${version}")
 
 repositories {
-	mavenCentral()
-	maven { url "https://maven.fabricmc.net/" }
-	maven { url "https://maven.architectury.dev/" }
-	maven {
-		url "https://maven.minecraftforge.net/"
-		content {
-			excludeGroupByRegex "org\\.eclipse\\.?.*"
-		}
-	}
-	mavenLocal()
+	maven { url "https://repo.woverflow.cc/" }
 }
 
 configurations {
@@ -192,7 +183,7 @@ codenarc {
 gradlePlugin {
 	plugins {
 		fabricLoom {
-			id = 'gg.essential.loom'
+			id = 'cc.woverflow.loom'
 			implementationClass = 'net.fabricmc.loom.bootstrap.LoomGradlePluginBootstrap'
 		}
 	}
@@ -228,8 +219,8 @@ import org.w3c.dom.Node
 publishing {
 	publications {
 		plugin(MavenPublication) {
-			groupId 'gg.essential.loom'
-			artifactId 'gg.essential.loom.gradle.plugin'
+			groupId 'cc.woverflow.loom'
+			artifactId 'cc.woverflow.loom.gradle.plugin'
 
 			from components.java
 			artifact downgradeJava
@@ -260,8 +251,8 @@ publishing {
 		}
 
 		pluginSnapshot(MavenPublication) {
-			groupId 'gg.essential.loom'
-			artifactId 'gg.essential.loom.gradle.plugin'
+			groupId 'cc.woverflow.loom'
+			artifactId 'cc.woverflow.loom.gradle.plugin'
 			version baseVersion + '-SNAPSHOT'
 
 			pom.withXml {
@@ -281,13 +272,12 @@ publishing {
 	}
 	
 	repositories {
-		if (project.hasProperty("nexus_user")) {
+		if (project.hasProperty("REPO_TOKEN")) {
 			maven {
-				url = "https://repo.sk1er.club/repository/maven-releases/"
-				name = "nexus-public"
+				url = "https://repo.woverflow.cc/releases/"
 				credentials {
-					username = project.property("nexus_user").toString()
-					password = project.property("nexus_password").toString()
+					username = "wyvest"
+					password = project.property("REPO_TOKEN").toString()
 				}
 			}
 		}
