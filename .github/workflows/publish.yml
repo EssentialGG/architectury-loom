@@ -23,4 +23,4 @@ jobs:
       - name: Upload to Maven
         run: ./gradlew publish --stacktrace
         env:
-          MAVEN_PASS: ${{ secrets.MAVEN_PASS }}
+          REPO_TOKEN: ${{ secrets.REPO_TOKEN }}
