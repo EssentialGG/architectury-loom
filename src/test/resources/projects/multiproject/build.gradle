@@ -1,7 +1,7 @@
 plugins {
 	id "java"
 	id "java-library"
-	id 'gg.essential.loom' apply false
+	id 'cc.woverflow.loom' apply false
 }
 
 allprojects {

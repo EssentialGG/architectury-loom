@@ -1,5 +1,5 @@
 plugins {
-	id 'gg.essential.loom'
+	id 'cc.woverflow.loom'
 }
 
 sourceCompatibility = JavaVersion.VERSION_1_8

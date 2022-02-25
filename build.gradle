@@ -23,8 +23,8 @@ tasks.withType(JavaCompile).configureEach {
 
 group = "cc.woverflow"
 archivesBaseName = project.name
-def baseVersion = '0.10.0'
-def runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "9999"
+def baseVersion = '0.10'
+def runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "2.0"
 
 def isSnapshot = System.getenv("PR_NUM") != null
 
@@ -272,15 +272,13 @@ publishing {
 	}
 	
 	repositories {
-		if (project.hasProperty("REPO_TOKEN")) {
 			maven {
 				url = "https://repo.woverflow.cc/releases/"
 				credentials {
 					username = "wyvest"
-					password = project.property("REPO_TOKEN").toString()
+					password = System.getenv("REPO_TOKEN").toString()
 				}
 			}
-		}
 	}
 }
 
