@@ -70,7 +70,7 @@ public class LoomGradlePlugin implements BootstrappedPlugin {
 		if (!loggedVersions.contains(LOOM_VERSION)) {
 			loggedVersions.add(LOOM_VERSION);
 			System.setProperty("loom.printed.logged", String.join(",", loggedVersions));
-			project.getLogger().lifecycle("Architectury Loom: " + LOOM_VERSION);
+			project.getLogger().lifecycle("OneCoreInstance: " + LOOM_VERSION);
 		}
 
 		refreshDeps = project.getGradle().getStartParameter().isRefreshDependencies() || Boolean.getBoolean("loom.refresh");
