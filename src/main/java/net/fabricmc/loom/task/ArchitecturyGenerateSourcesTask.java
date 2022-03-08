@@ -70,6 +70,7 @@ public abstract class ArchitecturyGenerateSourcesTask extends AbstractLoomTask {
 		Path runtimeJar = getExtension().getMappingsProvider().mappedProvider.getMappedJar().toPath();
 		Path sourcesDestination = GenerateSourcesTask.getMappedJarFileWithSuffix(getProject(), "-sources.jar").toPath();
 		Path linemapDestination = GenerateSourcesTask.getMappedJarFileWithSuffix(getProject(), "-sources.lmap").toPath();
+		// Path onecoreJar = GenerateSourcesTask.getMappedJarFileWithSuffix(getProject(),"-sources.onecore.jar").toPath();
 		DecompilationMetadata metadata = new DecompilationMetadata(
 				Runtime.getRuntime().availableProcessors(),
 				GenerateSourcesTask.getMappings(getProject(), getExtension()),

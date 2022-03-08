@@ -117,7 +117,7 @@ public interface LoomGradleExtension extends LoomGradleExtensionAPI {
 	void addTransitiveAccessWideners(List<AccessWidenerFile> accessWidenerFiles);
 
 	// ===================
-	//  Architectury Loom
+	//  Loom
 	// ===================
 	default PatchProvider getPatchProvider() {
 		return getDependencyManager().getProvider(PatchProvider.class);

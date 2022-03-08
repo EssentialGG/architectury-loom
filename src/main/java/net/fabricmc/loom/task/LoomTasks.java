@@ -60,6 +60,8 @@ public final class LoomTasks {
 		tasks.register("downloadAssets", DownloadAssetsTask.class, t -> t.setDescription("Downloads required assets for Fabric."));
 		tasks.register("remapSourcesJar", RemapSourcesJarTask.class, t -> t.setDescription("Remaps the project sources jar to intermediary names."));
 
+		tasks.register("onecoreInit", OneCoreTask.class, t -> t.setDescription("OneCore support."));
+
 		tasks.getByName("check").dependsOn(
 				tasks.register("validateAccessWidener", ValidateAccessWidenerTask.class, t -> {
 					t.setDescription("Validate all the rules in the access widener against the Minecraft jar");
