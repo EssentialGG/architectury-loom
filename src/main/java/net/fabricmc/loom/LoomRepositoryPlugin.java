@@ -63,9 +63,43 @@ public class LoomRepositoryPlugin implements Plugin<PluginAware> {
 			repo.setName("UserLocalRemappedMods");
 			repo.setUrl(files.getRemappedModCache());
 		});
-		repositories.maven(repo -> {
-			repo.setName("W-OVERFLOW");
-			repo.setUrl("https://repo.woverflow.cc/");
-		});
+		repo.setName("Architectury");
+ 			repo.setUrl("https://maven.architectury.dev/");
+ 			repo.mavenContent(content -> {
+ 				content.includeGroup("dev.architectury");
+ 			});
+ 		});
+ 		repositories.maven(repo -> {
+ 			repo.setName("Fabric");
+ 			repo.setUrl(MirrorUtil.getFabricRepository(target));
+ 		});
+ 		repositories.maven(repo -> {
+ 			repo.setName("Mojang");
+ 			repo.setUrl(MirrorUtil.getLibrariesBase(target));
+ 		});
+ 		repositories.maven(repo -> {
+ 			repo.setName("Forge");
+ 			repo.setUrl("https://maven.minecraftforge.net/");
+
+ 			repo.content(descriptor -> {
+ 				descriptor.excludeGroupByRegex("org\\.eclipse\\.?.*");
+ 			});
+ 			repo.metadataSources(sources -> {
+ 				sources.mavenPom();
+ 				sources.ignoreGradleMetadataRedirection();
+ 			});
+ 		});
+ 		repositories.mavenCentral();
+
+ 		repositories.ivy(repo -> {
+ 			repo.setUrl(files.getUserCache());
+ 			repo.patternLayout(layout -> layout.artifact("[revision]/[artifact](-[classifier])(.[ext])"));
+ 			repo.metadataSources(IvyArtifactRepository.MetadataSources::artifact);
+ 		});
+
+ 		repositories.ivy(repo -> {
+ 			repo.setUrl(files.getRootProjectPersistentCache());
+ 			repo.patternLayout(layout -> layout.artifact("[revision]/[artifact](-[classifier])(.[ext])"));
+ 			repo.metadataSources(IvyArtifactRepository.MetadataSources::artifact);
 	}
 }
