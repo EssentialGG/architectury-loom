@@ -30,7 +30,7 @@ forge-diffpatch = "2.0.7"
 night-config = "3.6.6"
 datafixerupper = "6.0.8"
 at = "1.0.1"
-lzma = "1.3"
+xz = "1.8"
 
 [libraries]
 # Loom compile libraries
@@ -65,7 +65,7 @@ forge-diffpatch = { module = "net.minecraftforge:DiffPatch", version.ref = "forg
 night-config-toml = { module = "com.electronwill.night-config:toml", version.ref = "night-config" }
 datafixerupper = { module = "com.mojang:datafixerupper", version.ref = "datafixerupper" }
 at = { module = "dev.architectury:at", version.ref = "at" }
-lzma = { module = "com.github.jponge:lzma-java", version.ref = "lzma" }
+xz = { module = "org.tukaani:xz", version.ref = "xz" }
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

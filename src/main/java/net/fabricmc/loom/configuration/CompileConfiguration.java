@@ -226,13 +226,13 @@ public abstract class CompileConfiguration implements Runnable {
 		// but before MinecraftPatchedProvider.provide.
 		setupDependencyProviders(project, extension);
 
-		if (extension.isLegacyForge()) {
+		if (extension.getForgeSpec() <= 2) {
 			extension.setIntermediateMappingsProvider(GeneratedIntermediateMappingsProvider.class, provider -> {
 				provider.minecraftProvider = minecraftProvider;
 			});
 		}
 
-		if (extension.isForgeLike() && !extension.isLegacyForge()) {
+		if (extension.isForgeLike() && extension.getForgeSpec() > 2) {
 			// Excluded on legacy forge because it pulls in a log4j-api version newer than what forge wants and we don't
 			// need it anyway
 			project.getDependencies().add(Constants.Configurations.FORGE_EXTRA, LoomVersions.UNPROTECT.mavenNotation());

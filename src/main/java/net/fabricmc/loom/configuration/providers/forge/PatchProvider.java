@@ -43,12 +43,11 @@ import java.util.jar.JarInputStream;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 
-import lzma.sdk.lzma.Decoder;
-import lzma.sdk.lzma.Encoder;
-import lzma.streams.LzmaInputStream;
-import lzma.streams.LzmaOutputStream;
 import org.apache.commons.io.IOUtils;
 import org.gradle.api.Project;
+import org.tukaani.xz.LZMA2Options;
+import org.tukaani.xz.LZMAInputStream;
+import org.tukaani.xz.LZMAOutputStream;
 
 import net.fabricmc.loom.configuration.DependencyInfo;
 import net.fabricmc.loom.configuration.providers.forge.fg2.Pack200Provider;
@@ -99,12 +98,12 @@ public class PatchProvider extends DependencyProvider {
 
 	private void splitAndConvertLegacyPatches(Path joinedLegacyPatches) throws IOException {
 		try (JarInputStream in = new JarInputStream(new ByteArrayInputStream(unpack200Lzma(joinedLegacyPatches)));
-				OutputStream clientFileOut = Files.newOutputStream(clientPatches, CREATE, TRUNCATE_EXISTING);
-				LzmaOutputStream clientLzmaOut = new LzmaOutputStream(clientFileOut, new Encoder());
-				JarOutputStream clientJarOut = new JarOutputStream(clientLzmaOut);
-				OutputStream serverFileOut = Files.newOutputStream(serverPatches, CREATE, TRUNCATE_EXISTING);
-				LzmaOutputStream serverLzmaOut = new LzmaOutputStream(serverFileOut, new Encoder());
-				JarOutputStream serverJarOut = new JarOutputStream(serverLzmaOut);
+			 OutputStream clientFileOut = Files.newOutputStream(clientPatches, CREATE, TRUNCATE_EXISTING);
+			 LZMAOutputStream clientLzmaOut = new LZMAOutputStream(clientFileOut, new LZMA2Options(), -1);
+			 JarOutputStream clientJarOut = new JarOutputStream(clientLzmaOut);
+			 OutputStream serverFileOut = Files.newOutputStream(serverPatches, CREATE, TRUNCATE_EXISTING);
+			 LZMAOutputStream serverLzmaOut = new LZMAOutputStream(serverFileOut, new LZMA2Options(), -1);
+			 JarOutputStream serverJarOut = new JarOutputStream(serverLzmaOut)
 		) {
 			for (JarEntry entry; (entry = in.getNextJarEntry()) != null;) {
 				String name = entry.getName();
@@ -153,7 +152,7 @@ public class PatchProvider extends DependencyProvider {
 	}
 
 	private byte[] unpack200Lzma(InputStream in) throws IOException {
-		try (LzmaInputStream lzmaIn = new LzmaInputStream(in, new Decoder())) {
+		try (LZMAInputStream lzmaIn = new LZMAInputStream(in)) {
 			return unpack200(lzmaIn);
 		}
 	}

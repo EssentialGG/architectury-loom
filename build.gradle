@@ -193,7 +193,7 @@ dependencies {
 	implementation libs.night.config.toml
 
 	// Legacy Forge patches
-	implementation libs.lzma
+	implementation libs.xz
 
 	// Testing
 	testImplementation(gradleTestKit())
