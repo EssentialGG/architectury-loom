@@ -95,7 +95,7 @@ public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequi
 					refmapRemapType = MixinRemapType.STATIC;
 				}
 
-				if (loomVersion != null && refmapRemapType != MixinRemapType.STATIC) {
+				if (loomVersion != null && refmapRemapType == MixinRemapType.STATIC) {
 					validateLoomVersion(loomVersion, currentLoomVersion);
 				}
 			}
