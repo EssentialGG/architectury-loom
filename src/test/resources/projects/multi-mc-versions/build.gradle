@@ -2,7 +2,7 @@ import groovy.json.JsonSlurper
 
 plugins {
 	id "java"
-	id 'dev.architectury.loom' apply false
+	id 'gg.essential.loom' apply false
 }
 
 allprojects {
@@ -19,7 +19,7 @@ def getMappingVersion(String mcVersion) {
 }
 
 subprojects {
-	apply plugin: "dev.architectury.loom"
+	apply plugin: "gg.essential.loom"
 
 	base {
 		archivesName = rootProject.name + "-" + project.name

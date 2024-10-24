@@ -5,7 +5,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptions
 plugins {
 	kotlin("jvm") version "1.9.22"
 	kotlin("plugin.serialization") version "1.9.22"
-    id("dev.architectury.loom")
+    id("gg.essential.loom")
 	`maven-publish`
 }
 

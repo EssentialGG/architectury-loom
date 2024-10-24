@@ -82,7 +82,7 @@ public class SingleJarDecompileConfiguration extends DecompileConfiguration<Mapp
 		});
 
 		// TODO: Support for env-only jars?
-		if (extension.isForge() && extension.getMinecraftJarConfiguration().get() == MinecraftJarConfiguration.MERGED) {
+		if (extension.isForge() && !extension.isLegacyForge() && extension.getMinecraftJarConfiguration().get() == MinecraftJarConfiguration.MERGED) {
 			project.getTasks().register("genForgePatchedSources", GenerateForgePatchedSourcesTask.class, task -> {
 				task.setDescription("Decompile Minecraft using Forge's toolchain.");
 				task.setGroup(Constants.TaskGroup.FABRIC);

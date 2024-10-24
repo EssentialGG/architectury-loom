@@ -32,4 +32,5 @@ jobs:
       - name: Upload to Maven
         run: ./gradlew publish --stacktrace
         env:
-          MAVEN_PASS: ${{ secrets.MAVEN_PASS }}
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}

@@ -201,7 +201,7 @@ public abstract class LoomConfigurations implements Runnable {
 			extendsFrom(JavaPlugin.TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_EXTRA);
 
 			// Add Forge/NeoForge shared dev-time dependencies
-			getDependencies().add(Constants.Configurations.FORGE_EXTRA, LoomVersions.UNPROTECT.mavenNotation());
+			// Note: Unprotect is set up later in CompileConfiguration because we need to skip it on legacy forge
 			getDependencies().add(JavaPlugin.COMPILE_ONLY_CONFIGURATION_NAME, LoomVersions.JAVAX_ANNOTATIONS.mavenNotation());
 
 			// Add Forge-only dev-time dependencies

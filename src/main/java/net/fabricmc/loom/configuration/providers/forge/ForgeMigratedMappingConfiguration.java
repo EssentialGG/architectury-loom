@@ -52,6 +52,13 @@ public final class ForgeMigratedMappingConfiguration extends MappingConfiguratio
 	@Override
 	protected void manipulateMappings(Project project, Path mappingsJar) throws IOException {
 		LoomGradleExtension extension = LoomGradleExtension.get(project);
+
+		if (extension.isLegacyForge()) {
+			// Legacy forge patches are in official namespace, so if the type of a field is changed by them, then that
+			// is effectively a new field and not traceable to any mapping. Therefore this does not apply to it.
+			return;
+		}
+
 		final Path forgeCache = ForgeProvider.getForgeCache(project);
 		Files.createDirectories(forgeCache);
 

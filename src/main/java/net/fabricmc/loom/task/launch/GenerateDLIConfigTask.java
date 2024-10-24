@@ -30,7 +30,7 @@ import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -202,13 +202,15 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 					.property("client", "org.lwjgl.librarypath", nativesPath);
 		}
 
-		if (!platform.isForgeLike()) {
+		if (!platform.isForgeLike() || (platform == ModPlatform.FORGE && getForgeInputs().get().legacyForge())) {
 			launchConfig
 					.argument("client", "--assetIndex")
 					.argument("client", versionInfo.assetIndex().fabricId(getMinecraftVersion().get()))
 					.argument("client", "--assetsDir")
 					.argument("client", assetsDirectory.getAbsolutePath());
+		}
 
+		if (!platform.isForgeLike()) {
 			if (getSplitSourceSets().get()) {
 				launchConfig.property("client", !quilt ? "fabric.gameJarPath.client" : "loader.gameJarPath.client", getClientGameJarPath().get());
 				launchConfig.property(!quilt ? "fabric.gameJarPath" : "loader.gameJarPath", getCommonGameJarPath().get());
@@ -259,7 +261,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 
 				launchConfig.property("mixin.env.remapRefMap", "true");
 
-				if (forgeInputs.useCustomMixin()) {
+				if (!forgeInputs.legacyForge() && forgeInputs.useCustomMixin()) {
 					// See mixin remapper service in forge-runtime
 					launchConfig
 							.property("architectury.mixinRemapper.sourceNamespace", intermediateNs)
@@ -272,7 +274,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 
 				if (!mixinConfigs.isEmpty()) {
 					for (String config : mixinConfigs) {
-						launchConfig.argument("-mixin.config");
+						launchConfig.argument(forgeInputs.legacyForge() ? "--mixin" : "-mixin.config");
 						launchConfig.argument(config);
 					}
 				}
@@ -335,7 +337,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 	}
 
 	public static class LaunchConfig {
-		private final Map<String, List<String>> values = new HashMap<>();
+		private final Map<String, List<String>> values = new LinkedHashMap<>();
 
 		public LaunchConfig property(String key, String value) {
 			return property("common", key, value);
@@ -374,6 +376,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 
 	@ApiStatus.Internal
 	public record ForgeInputs(
+			boolean legacyForge,
 			List<String> dataGenMods,
 			String legacyDataGenDir,
 			Set<String> mixinConfigs,
@@ -382,6 +385,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 	) implements Serializable {
 		public ForgeInputs(Project project, LoomGradleExtension extension) {
 			this(
+					extension.isLegacyForge(),
 					extension.getForge().getDataGenMods(),
 					project.file("src/generated/resources").getAbsolutePath(),
 					extension.getForge().getMixinConfigs().get(),

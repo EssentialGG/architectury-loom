@@ -27,6 +27,7 @@ package net.fabricmc.loom.util.service;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.gradle.api.Project;
 import org.gradle.api.Task;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.services.BuildService;
@@ -37,6 +38,8 @@ import org.gradle.tooling.events.task.TaskOperationDescriptor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.fabricmc.loom.LoomGradleExtension;
+
 public abstract class BuildSharedServiceManager implements BuildService<BuildServiceParameters.None> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(BuildSharedServiceManager.class);
 	private static final String NAME = "loom:sharedServiceManager";
@@ -45,7 +48,14 @@ public abstract class BuildSharedServiceManager implements BuildService<BuildSer
 	private final AtomicInteger refCount = new AtomicInteger(0);
 
 	public static Provider<BuildSharedServiceManager> createForTask(Task task, BuildEventsListenerRegistry buildEventsListenerRegistry) {
-		Provider<BuildSharedServiceManager> provider = task.getProject().getGradle().getSharedServices().registerIfAbsent(NAME, BuildSharedServiceManager.class, spec -> {
+		Project project = task.getProject();
+		String name = NAME;
+
+		if (!LoomGradleExtension.get(project).multiProjectOptimisation()) {
+			name += "-" + project.getPath();
+		}
+
+		Provider<BuildSharedServiceManager> provider = project.getGradle().getSharedServices().registerIfAbsent(name, BuildSharedServiceManager.class, spec -> {
 		});
 		task.usesService(provider);
 

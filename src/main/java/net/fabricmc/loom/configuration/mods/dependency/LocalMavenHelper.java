@@ -36,7 +36,7 @@ import org.jetbrains.annotations.Nullable;
 
 public record LocalMavenHelper(String group, String name, String version, @Nullable String baseClassifier, Path root) {
 	public Path copyToMaven(Path artifact, @Nullable String classifier) throws IOException {
-		if (!artifact.getFileName().toString().endsWith(".jar")) {
+		if (!artifact.getFileName().toString().endsWith(".jar") && !artifact.getFileName().toString().endsWith(".zip")) {
 			throw new UnsupportedOperationException();
 		}
 

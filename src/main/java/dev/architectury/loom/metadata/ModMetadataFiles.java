@@ -27,6 +27,7 @@ public final class ModMetadataFiles {
 			.put(ArchitecturyCommonJson.FILE_NAME, ArchitecturyCommonJson::of)
 			.put(ModsToml.FILE_PATH, onError(ModsToml::of, "Could not load mods.toml", () -> new ErroringModMetadataFile("mods.toml")))
 			.put(ModsToml.NEOFORGE_FILE_PATH, onError(ModsToml::of, "Could not load neoforge.mods.toml", () -> new ErroringModMetadataFile("neoforge.mods.toml")))
+			.put(McmodInfo.FILE_PATH, onError(McmodInfo::of, "Could not load mcmod.info", () -> new ErroringModMetadataFile("mcmod.info")))
 			.build();
 
 	private static <A, B> Function<A, B> onError(Function<A, B> fn, String message, Supplier<B> onError) {

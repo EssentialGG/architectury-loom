@@ -28,17 +28,18 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 
+import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.configuration.ConfigContext;
 import net.fabricmc.loom.configuration.providers.forge.MinecraftPatchedProvider;
+import net.fabricmc.loom.configuration.providers.forge.fg2.MinecraftLegacyPatchedProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.MergedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftMetadataProvider;
 
 public final class MergedForgeMinecraftProvider extends MergedMinecraftProvider implements ForgeMinecraftProvider {
-	private final MinecraftPatchedProvider patchedProvider;
+	private MinecraftPatchedProvider patchedProvider;
 
 	public MergedForgeMinecraftProvider(MinecraftMetadataProvider metadataProvider, ConfigContext configContext) {
 		super(metadataProvider, configContext);
-		this.patchedProvider = new MinecraftPatchedProvider(configContext.project(), this, MinecraftPatchedProvider.Type.MERGED);
 	}
 
 	@Override
@@ -58,6 +59,14 @@ public final class MergedForgeMinecraftProvider extends MergedMinecraftProvider 
 
 	@Override
 	public MinecraftPatchedProvider getPatchedProvider() {
+		if (this.patchedProvider == null) {
+			if (LoomGradleExtension.get(getProject()).isModernForgeLike()) {
+				this.patchedProvider = new MinecraftPatchedProvider(getProject(), this, MinecraftPatchedProvider.Type.MERGED);
+			} else {
+				this.patchedProvider = new MinecraftLegacyPatchedProvider(getProject(), this, MinecraftPatchedProvider.Type.MERGED);
+			}
+		}
+
 		return patchedProvider;
 	}
 }

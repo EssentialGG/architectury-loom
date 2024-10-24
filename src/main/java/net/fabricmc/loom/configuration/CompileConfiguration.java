@@ -72,6 +72,7 @@ import net.fabricmc.loom.configuration.providers.forge.PatchProvider;
 import net.fabricmc.loom.configuration.providers.forge.SrgProvider;
 import net.fabricmc.loom.configuration.providers.forge.mcpconfig.McpConfigProvider;
 import net.fabricmc.loom.configuration.providers.forge.minecraft.ForgeMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.mappings.GeneratedIntermediateMappingsProvider;
 import net.fabricmc.loom.configuration.providers.mappings.LayeredMappingsFactory;
 import net.fabricmc.loom.configuration.providers.mappings.MappingConfiguration;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftJarConfiguration;
@@ -88,6 +89,7 @@ import net.fabricmc.loom.extension.MixinExtension;
 import net.fabricmc.loom.util.Checksum;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.ExceptionUtil;
+import net.fabricmc.loom.util.LoomVersions;
 import net.fabricmc.loom.util.ProcessUtil;
 import net.fabricmc.loom.util.gradle.GradleUtils;
 import net.fabricmc.loom.util.gradle.SourceSetHelper;
@@ -223,6 +225,18 @@ public abstract class CompileConfiguration implements Runnable {
 		// This needs to run after MinecraftProvider.initFiles and MinecraftLibraryProvider.provide
 		// but before MinecraftPatchedProvider.provide.
 		setupDependencyProviders(project, extension);
+
+		if (extension.isLegacyForge()) {
+			extension.setIntermediateMappingsProvider(GeneratedIntermediateMappingsProvider.class, provider -> {
+				provider.minecraftProvider = minecraftProvider;
+			});
+		}
+
+		if (extension.isForgeLike() && !extension.isLegacyForge()) {
+			// Excluded on legacy forge because it pulls in a log4j-api version newer than what forge wants and we don't
+			// need it anyway
+			project.getDependencies().add(Constants.Configurations.FORGE_EXTRA, LoomVersions.UNPROTECT.mavenNotation());
+		}
 
 		final DependencyInfo mappingsDep = DependencyInfo.create(getProject(), Configurations.MAPPINGS);
 		final MappingConfiguration mappingConfiguration = MappingConfiguration.create(getProject(), configContext.serviceManager(), mappingsDep, minecraftProvider);
@@ -532,9 +546,9 @@ public abstract class CompileConfiguration implements Runnable {
 		}
 
 		if (extension.isForgeLike()) {
+			dependencyProviders.addProvider(new ForgeUniversalProvider(project));
 			dependencyProviders.addProvider(new McpConfigProvider(project));
 			dependencyProviders.addProvider(new PatchProvider(project));
-			dependencyProviders.addProvider(new ForgeUniversalProvider(project));
 		}
 
 		dependencyProviders.handleDependencies(project);

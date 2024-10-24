@@ -58,7 +58,7 @@ class OfflineModeTest extends Specification implements GradleProjectTestTrait {
 		def projectHash = result1.output.split("%%")[1]
 
 		// Create a dummy lock file to ensure that the loom cache is rebuilt on the next run
-		def lockFile = new File(gradle.gradleHomeDir, "caches/fabric-loom/.${projectHash}.lock")
+		def lockFile = new File(gradle.gradleHomeDir, "caches/essential-loom/.${projectHash}.lock")
 		lockFile.text = "12345"
 
 		// Run with --offline to ensure that nothing is downloaded.

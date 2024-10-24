@@ -5,6 +5,7 @@ javalin = "6.1.6"
 mockito = "5.12.0"
 java-debug = "0.52.0"
 mixin = "0.12.5+mixin.0.8.5"
+pack200 = "0.1.3"
 
 gradle-nightly = "8.10-20240613003017+0000"
 fabric-loader = "0.15.11"
@@ -18,6 +19,7 @@ javalin = { module = "io.javalin:javalin", version.ref = "javalin" }
 mockito = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 java-debug = { module = "com.microsoft.java:com.microsoft.java.debug.core", version.ref = "java-debug" }
 mixin = { module = "net.fabricmc:sponge-mixin", version.ref = "mixin" }
+pack200 = { module = "dev.architectury.architectury-pack200:dev.architectury.architectury-pack200.gradle.plugin", version.ref = "pack200" }
 gradle-nightly = { module = "org.gradle:dummy", version.ref = "gradle-nightly" }
 fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabric-loader" }
 fabric-installer = { module = "net.fabricmc:fabric-installer", version.ref = "fabric-installer" }

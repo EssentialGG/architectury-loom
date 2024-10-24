@@ -28,6 +28,7 @@ import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Objects;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
@@ -52,6 +53,37 @@ public class McpConfigProvider extends DependencyProvider {
 	@Override
 	public void provide(DependencyInfo dependency) throws Exception {
 		init(dependency.getDependency().getVersion());
+
+		if (getExtension().isLegacyForge()) {
+			//CHECKSTYLE:OFF
+			String json = """
+{
+  "version": "$version",
+  "data": {
+    "mappings": "TODO mappings"
+  },
+  "steps": {
+    "joined": [
+      {
+        "type": "downloadClient"
+      },
+      {
+        "type": "downloadServer"
+      },
+      {
+        "name": "rename",
+        "type": "downloadManifest"
+      }
+    ]
+  },
+  "functions": {}
+}
+					""".replace("$version", Objects.requireNonNull(dependency.getDependency().getVersion()));
+			//CHECKSTYLE:ON
+
+			data = McpConfigData.fromJson(new Gson().fromJson(json, JsonObject.class));
+			return;
+		}
 
 		Path mcpZip = dependency.resolveFile().orElseThrow(() -> new RuntimeException("Could not resolve MCPConfig")).toPath();
 

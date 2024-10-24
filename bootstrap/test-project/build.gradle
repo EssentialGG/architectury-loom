@@ -1,5 +1,5 @@
 plugins {
-	id 'dev.architectury.loom' version '0.13.local'
+	id 'gg.essential.loom' version '0.13.local'
 }
 
 dependencies {

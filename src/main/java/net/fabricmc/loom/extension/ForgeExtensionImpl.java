@@ -40,6 +40,7 @@ import org.gradle.api.provider.SetProperty;
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.ForgeExtensionAPI;
 import net.fabricmc.loom.configuration.ide.RunConfigSettings;
+import net.fabricmc.loom.configuration.providers.forge.fg2.Pack200Provider;
 
 public class ForgeExtensionImpl implements ForgeExtensionAPI {
 	private final LoomGradleExtension extension;
@@ -50,6 +51,7 @@ public class ForgeExtensionImpl implements ForgeExtensionAPI {
 	private final Property<Boolean> useCustomMixin;
 	private final Property<Boolean> useForgeLoggerConfig;
 	private final List<String> dataGenMods = new ArrayList<>(); // not a property because it has custom adding logic
+	private final Property<Pack200Provider> pack200Provider;
 
 	@Inject
 	public ForgeExtensionImpl(Project project, LoomGradleExtension extension) {
@@ -60,6 +62,7 @@ public class ForgeExtensionImpl implements ForgeExtensionAPI {
 		mixinConfigs = project.getObjects().setProperty(String.class).empty();
 		useCustomMixin = project.getObjects().property(Boolean.class).convention(true);
 		useForgeLoggerConfig = project.getObjects().property(Boolean.class).convention(false);
+		pack200Provider = project.getObjects().property(Pack200Provider.class);
 	}
 
 	@Override
@@ -121,5 +124,10 @@ public class ForgeExtensionImpl implements ForgeExtensionAPI {
 				}
 			}
 		});
+	}
+
+	@Override
+	public Property<Pack200Provider> getPack200Provider() {
+		return pack200Provider;
 	}
 }

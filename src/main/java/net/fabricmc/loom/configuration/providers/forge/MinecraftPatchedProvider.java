@@ -97,13 +97,13 @@ import net.fabricmc.tinyremapper.TinyRemapper;
 
 public class MinecraftPatchedProvider {
 	private static final String LOOM_PATCH_VERSION_KEY = "Loom-Patch-Version";
-	private static final String CURRENT_LOOM_PATCH_VERSION = "9";
+	private static final String CURRENT_LOOM_PATCH_VERSION = "9+essential.1";
 	private static final String NAME_MAPPING_SERVICE_PATH = "/inject/META-INF/services/cpw.mods.modlauncher.api.INameMappingService";
 
-	private final Project project;
-	private final Logger logger;
-	private final MinecraftProvider minecraftProvider;
-	private final Type type;
+	protected final Project project;
+	protected final Logger logger;
+	protected final MinecraftProvider minecraftProvider;
+	protected final Type type;
 
 	// Step 1: Remap Minecraft to intermediate mappings, merge if needed
 	private Path minecraftIntermediateJar;
@@ -347,7 +347,7 @@ public class MinecraftPatchedProvider {
 		return getExtension().getForgeUserdevProvider().getUserdevJar();
 	}
 
-	private boolean isPatchedJarUpToDate(Path jar) throws IOException {
+	protected boolean isPatchedJarUpToDate(Path jar) throws IOException {
 		if (Files.notExists(jar)) return false;
 
 		byte[] manifestBytes = ZipUtils.unpackNullable(jar, "META-INF/MANIFEST.MF");
@@ -461,7 +461,7 @@ public class MinecraftPatchedProvider {
 		logger.lifecycle(":patched jars in " + stopwatch.stop());
 	}
 
-	private void patchJars(Path clean, Path output, Path patches) {
+	protected void patchJars(Path clean, Path output, Path patches) throws Exception {
 		ForgeToolExecutor.exec(project, spec -> {
 			UserdevConfig.BinaryPatcherConfig config = getExtension().getForgeUserdevProvider().getConfig().binpatcher();
 			spec.classpath(DependencyDownloader.download(project, config.dependency()));
@@ -504,11 +504,11 @@ public class MinecraftPatchedProvider {
 		}
 	}
 
-	private void walkFileSystems(Path source, Path target, Predicate<Path> filter, FsPathConsumer action) throws IOException {
+	protected void walkFileSystems(Path source, Path target, Predicate<Path> filter, FsPathConsumer action) throws IOException {
 		walkFileSystems(source, target, filter, FileSystem::getRootDirectories, action);
 	}
 
-	private void copyMissingClasses(Path source, Path target) throws IOException {
+	protected void copyMissingClasses(Path source, Path target) throws IOException {
 		walkFileSystems(source, target, it -> it.toString().endsWith(".class"), (sourceFs, targetFs, sourcePath, targetPath) -> {
 			if (Files.exists(targetPath)) return;
 			Path parent = targetPath.getParent();
@@ -530,7 +530,7 @@ public class MinecraftPatchedProvider {
 		walkFileSystems(source, target, filter, this::copyReplacing);
 	}
 
-	private void copyReplacing(FileSystem sourceFs, FileSystem targetFs, Path sourcePath, Path targetPath) throws IOException {
+	protected void copyReplacing(FileSystem sourceFs, FileSystem targetFs, Path sourcePath, Path targetPath) throws IOException {
 		Path parent = targetPath.getParent();
 
 		if (parent != null) {
@@ -607,7 +607,7 @@ public class MinecraftPatchedProvider {
 		SERVER_ONLY("server", "server", (patch, userdev) -> patch.serverPatches),
 		MERGED("merged", "joined", (patch, userdev) -> userdev.joinedPatches);
 
-		private final String id;
+		public final String id;
 		private final String mcpId;
 		private final BiFunction<PatchProvider, ForgeUserdevProvider, Path> patches;
 

@@ -50,7 +50,7 @@ public abstract class LoomFilesBaseImpl implements LoomFiles {
 
 	@Override
 	public File getUserCache() {
-		return createFile(getGradleUserHomeDir(), "caches" + File.separator + "fabric-loom");
+		return createFile(getGradleUserHomeDir(), "caches" + File.separator + "essential-loom");
 	}
 
 	@Override

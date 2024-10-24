@@ -25,19 +25,27 @@
 package net.fabricmc.loom.configuration.providers.forge;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.Reader;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.serialization.JsonOps;
 import dev.architectury.loom.forge.UserdevConfig;
 import org.gradle.api.Project;
+import org.gradle.api.artifacts.repositories.IvyArtifactRepository;
 
 import net.fabricmc.loom.configuration.DependencyInfo;
+import net.fabricmc.loom.configuration.mods.dependency.LocalMavenHelper;
 import net.fabricmc.loom.util.Constants;
+import net.fabricmc.loom.util.FileSystemUtil;
 import net.fabricmc.loom.util.ZipUtils;
 
 public class ForgeUserdevProvider extends DependencyProvider {
@@ -45,6 +53,7 @@ public class ForgeUserdevProvider extends DependencyProvider {
 	private JsonObject json;
 	private UserdevConfig config;
 	Path joinedPatches;
+	private Boolean isLegacyForge;
 
 	public ForgeUserdevProvider(Project project) {
 		super(project);
@@ -59,11 +68,32 @@ public class ForgeUserdevProvider extends DependencyProvider {
 		if (!userdevJar.exists() || Files.notExists(configJson) || refreshDeps()) {
 			File resolved = dependency.resolveFile().orElseThrow(() -> new RuntimeException("Could not resolve Forge userdev"));
 			Files.copy(resolved.toPath(), userdevJar.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			Files.write(configJson, ZipUtils.unpack(resolved.toPath(), "config.json"));
+
+			byte[] bytes;
+
+			try {
+				bytes = ZipUtils.unpack(resolved.toPath(), "config.json");
+			} catch (NoSuchFileException e) {
+				// If we cannot find a modern config json, try the legacy/FG2-era one
+				try {
+					bytes = ZipUtils.unpack(resolved.toPath(), "dev.json");
+				} catch (NoSuchFileException e1) {
+					e.addSuppressed(e1);
+					throw e;
+				}
+			}
+
+			Files.write(configJson, bytes);
 		}
 
 		try (Reader reader = Files.newBufferedReader(configJson)) {
 			json = new Gson().fromJson(reader, JsonObject.class);
+			isLegacyForge = !json.has("mcp");
+
+			if (isLegacyForge) {
+				json = createManifestFromForgeGradle2(dependency, json);
+			}
+
 			config = UserdevConfig.CODEC.parse(JsonOps.INSTANCE, json)
 					.getOrThrow(false, msg -> getProject().getLogger().error("Couldn't read userdev config, {}", msg));
 		}
@@ -76,9 +106,116 @@ public class ForgeUserdevProvider extends DependencyProvider {
 
 		addDependency(config.universal(), Constants.Configurations.FORGE_UNIVERSAL);
 
-		if (Files.notExists(joinedPatches)) {
+		if (!isLegacyForge && Files.notExists(joinedPatches)) {
 			Files.write(joinedPatches, ZipUtils.unpack(userdevJar.toPath(), config.binpatches()));
 		}
+	}
+
+	private JsonObject createManifestFromForgeGradle2(DependencyInfo dependency, JsonObject fg2Json) throws IOException {
+		JsonObject json = new JsonObject();
+
+		addLegacyMCPRepo();
+		String mcVersion = fg2Json.get("inheritsFrom").getAsString();
+		json.addProperty("mcp", "de.oceanlabs.mcp:mcp:" + mcVersion + ":srg@zip");
+
+		json.addProperty("universal", dependency.getDepString() + ":universal");
+		json.addProperty("sources", createLegacySources(dependency));
+		json.addProperty("patches", "");
+		json.addProperty("binpatches", "");
+		json.add("binpatcher", createLegacyBinpatcher());
+		json.add("libraries", createLegacyLibs(fg2Json));
+		json.add("runs", createLegacyRuns());
+
+		return json;
+	}
+
+	private static JsonObject createLegacyBinpatcher() {
+		JsonObject binpatcher = new JsonObject();
+		binpatcher.addProperty("version", "net.minecraftforge:binarypatcher:1.1.1:fatjar");
+		JsonArray args = new JsonArray();
+		List.of("--clean", "{clean}", "--output", "{output}", "--apply", "{patch}").forEach(args::add);
+		binpatcher.add("args", args);
+		return binpatcher;
+	}
+
+	private static JsonArray createLegacyLibs(JsonObject json) {
+		JsonArray array = new JsonArray();
+
+		for (JsonElement lib : json.getAsJsonArray("libraries")) {
+			array.add(lib.getAsJsonObject().get("name"));
+		}
+
+		return array;
+	}
+
+	private static JsonObject createLegacyRuns() {
+		JsonObject clientRun = new JsonObject();
+		JsonObject serverRun = new JsonObject();
+		clientRun.addProperty("name", "client");
+		serverRun.addProperty("name", "server");
+		clientRun.addProperty("main", Constants.LegacyForge.LAUNCH_WRAPPER);
+		serverRun.addProperty("main", Constants.LegacyForge.LAUNCH_WRAPPER);
+		JsonArray clientArgs = new JsonArray();
+		JsonArray serverArgs = new JsonArray();
+		clientArgs.add("--tweakClass");
+		serverArgs.add("--tweakClass");
+		clientArgs.add(Constants.LegacyForge.FML_TWEAKER);
+		serverArgs.add(Constants.LegacyForge.FML_SERVER_TWEAKER);
+		clientArgs.add("--accessToken");
+		serverArgs.add("--accessToken");
+		clientArgs.add("undefined");
+		serverArgs.add("undefined");
+		clientRun.add("args", clientArgs);
+		serverRun.add("args", serverArgs);
+		JsonObject runs = new JsonObject();
+		runs.add("client", clientRun);
+		runs.add("server", serverRun);
+		return runs;
+	}
+
+	private String createLegacySources(DependencyInfo dependency) throws IOException {
+		Path sourceRepo = getExtension().getForgeProvider().getGlobalCache().toPath().resolve("source-repo");
+		String group = dependency.getDependency().getGroup();
+		String name = dependency.getDependency().getName() + "_sources";
+		String version = dependency.getResolvedVersion();
+		LocalMavenHelper sourcesMaven = new LocalMavenHelper(group, name, version, "sources", sourceRepo);
+		getProject().getRepositories().maven(repo -> {
+			repo.setName("LoomFG2Source");
+			repo.setUrl(sourceRepo);
+		});
+
+		if (!sourcesMaven.exists(null)) {
+			try (FileSystemUtil.Delegate fs = FileSystemUtil.getJarFileSystem(userdevJar.toPath(), false)) {
+				sourcesMaven.copyToMaven(fs.getPath("sources.zip"), null);
+			}
+		}
+
+		return sourcesMaven.getNotation();
+	}
+
+	private void addLegacyMCPRepo() {
+		getProject().getRepositories().ivy(repo -> {
+			// Old MCP data does not have POMs
+			repo.setName("LegacyMCP");
+			repo.setUrl("https://maven.minecraftforge.net/");
+			repo.patternLayout(layout -> {
+				layout.artifact("[orgPath]/[artifact]/[revision]/[artifact]-[revision](-[classifier])(.[ext])");
+				// also check the zip so people do not have to explicitly specify the extension for older versions
+				layout.artifact("[orgPath]/[artifact]/[revision]/[artifact]-[revision](-[classifier]).zip");
+			});
+			repo.content(descriptor -> {
+				descriptor.includeGroup("de.oceanlabs.mcp");
+			});
+			repo.metadataSources(IvyArtifactRepository.MetadataSources::artifact);
+		});
+	}
+
+	public boolean isLegacyForge() {
+		if (isLegacyForge == null) {
+			throw new IllegalArgumentException("Not yet resolved.");
+		}
+
+		return isLegacyForge;
 	}
 
 	public File getUserdevJar() {

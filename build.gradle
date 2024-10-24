@@ -48,7 +48,7 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
 	}
 }
 
-group = "dev.architectury"
+group = "gg.essential"
 def baseVersion = '1.7'
 
 def ENV = System.getenv()
@@ -197,6 +197,9 @@ dependencies {
 	// Forge mods.toml parsing
 	implementation libs.night.config.toml
 
+	// Legacy Forge patches
+	implementation libs.lzma
+
 	// Testing
 	testImplementation(gradleTestKit())
 	testImplementation(testLibs.spock) {
@@ -209,6 +212,8 @@ dependencies {
 	}
 	testImplementation testLibs.mockito
 	testImplementation testLibs.java.debug
+
+	runtimeOnly testLibs.pack200
 
 	compileOnly runtimeLibs.jetbrains.annotations
 	testCompileOnly runtimeLibs.jetbrains.annotations
@@ -248,7 +253,7 @@ spotless {
 	lineEndings = com.diffplug.spotless.LineEnding.UNIX
 
 	java {
-		licenseHeaderFile(rootProject.file("HEADER")).yearSeparator("-")
+		// licenseHeaderFile(rootProject.file("HEADER")).yearSeparator("-")
 		targetExclude("**/loom/util/DownloadUtil.java", "**/loom/util/FileSystemUtil.java")
 		targetExclude("**/dev/architectury/**")
 	}
@@ -298,7 +303,7 @@ codenarc {
 gradlePlugin {
 	plugins {
 		fabricLoom {
-			id = 'dev.architectury.loom'
+			id = 'gg.essential.loom'
 			implementationClass = 'net.fabricmc.loom.bootstrap.LoomGradlePluginBootstrap'
 		}
 	}
@@ -336,52 +341,16 @@ tasks.withType(Test).configureEach {
 import org.gradle.api.internal.artifacts.configurations.ConfigurationRoles
 import org.gradle.launcher.cli.KotlinDslVersion
 import org.gradle.util.GradleVersion
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import org.w3c.dom.Node
 
 publishing {
-	publications {
-		if (!isSnapshot && !ENV.EXPERIMENTAL) {
-			// Also publish a snapshot so people can use the latest version if they wish
-			snapshot(MavenPublication) { publication ->
-				groupId project.group
-				artifactId project.base.archivesName.get()
-				version baseVersion + '-SNAPSHOT'
-
-				from components.java
-			}
-
-			// Manually crate the plugin marker for snapshot versions
-			snapshotPlugin(MavenPublication) {
-				groupId 'dev.architectury.loom'
-				artifactId 'dev.architectury.loom.gradle.plugin'
-				version baseVersion + '-SNAPSHOT'
-
-				pom.withXml({
-					// Based off org.gradle.plugin.devel.plugins.MavenPluginPublishPlugin
-					Element root = asElement()
-					Document document = root.getOwnerDocument()
-					Node dependencies = root.appendChild(document.createElement('dependencies'))
-					Node dependency = dependencies.appendChild(document.createElement('dependency'))
-					Node groupId = dependency.appendChild(document.createElement('groupId'))
-					groupId.setTextContent(project.group)
-					Node artifactId = dependency.appendChild(document.createElement('artifactId'))
-					artifactId.setTextContent(project.archivesBaseName)
-					Node version = dependency.appendChild(document.createElement('version'))
-					version.setTextContent(baseVersion + '-SNAPSHOT')
-				})
-			}
-		}
-	}
-
 	repositories {
-		if (ENV.MAVEN_PASS != null) {
+		if (System.getenv("NEXUS_USER") != null) {
 			maven {
-				url = "https://deploy.shedaniel.me/"
+				url = "https://repo.sk1er.club/repository/maven-releases/"
+				name = "nexus-public"
 				credentials {
-					username = "shedaniel"
-					password = ENV.MAVEN_PASS
+					username = System.getenv("NEXUS_USER")
+					password = System.getenv("NEXUS_PASSWORD")
 				}
 			}
 		}
