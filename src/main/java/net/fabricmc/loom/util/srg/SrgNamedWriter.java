@@ -28,12 +28,17 @@ import java.io.IOException;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.cadixdev.lorenz.MappingSet;
 import org.cadixdev.lorenz.io.srg.SrgWriter;
 
 import net.fabricmc.lorenztiny.TinyMappingsReader;
 import net.fabricmc.mappingio.tree.MappingTree;
+import org.cadixdev.lorenz.model.ClassMapping;
+import org.cadixdev.lorenz.model.FieldMapping;
+import org.cadixdev.lorenz.model.MethodMapping;
 
 public class SrgNamedWriter {
 	public static void writeTo(Path srgFile, MappingTree mappings, String from, String to, boolean includeIdentityMappings) throws IOException {
@@ -51,23 +56,64 @@ public class SrgNamedWriter {
 	}
 
 	/**
-	 * Legacy Forge's FMLDeobfuscatingRemapper requires class mappings, even if they are identity maps, but such
-	 * mappings are filtered out by the SrgWriter. To get around that, this SrgWriter manually emits identity mappings
-	 * before emitting all regular mappings.
+	 * Legacy Forge's FMLDeobfuscatingRemapper requires all mappings, even if they are identity maps, but such
+	 * mappings are filtered out by the SrgWriter. To get around that, this modified SrgWriter writes all the mappings
 	 */
 	private static class SrgWithIdentitiesWriter extends SrgWriter {
+		private final List<String> classes = new ArrayList<>();
+		private final List<String> fields = new ArrayList<>();
+		private final List<String> methods = new ArrayList<>();
+
 		private SrgWithIdentitiesWriter(Writer writer) {
 			super(writer);
 		}
 
 		@Override
-		public void write(MappingSet mappings) {
+		public void write(final MappingSet mappings) {
 			mappings.getTopLevelClassMappings().stream()
-					.filter(cls -> !cls.hasDeobfuscatedName())
-					.sorted(getConfig().getClassMappingComparator())
-					.forEach(cls -> writer.format("CL: %s %s%n", cls.getFullObfuscatedName(), cls.getFullDeobfuscatedName()));
+					.sorted(this.getConfig().getClassMappingComparator())
+					.forEach(this::writeClassMapping);
 
-			super.write(mappings);
+			this.classes.forEach(this.writer::println);
+			this.fields.forEach(this.writer::println);
+			this.methods.forEach(this.writer::println);
+
+			this.classes.clear();
+			this.fields.clear();
+			this.methods.clear();
+		}
+
+		@Override
+		protected void writeClassMapping(final ClassMapping<?, ?> mapping) {
+			this.classes.add(String.format("CL: %s %s", mapping.getFullObfuscatedName(), mapping.getFullDeobfuscatedName()));
+
+
+			// Write inner class mappings
+			mapping.getInnerClassMappings().stream()
+					.sorted(this.getConfig().getClassMappingComparator())
+					.forEach(this::writeClassMapping);
+
+			// Write field mappings
+			mapping.getFieldsByName().values().stream()
+					.sorted(this.getConfig().getFieldMappingComparator())
+					.forEach(this::writeFieldMapping);
+
+			// Write method mappings
+			mapping.getMethodMappings().stream()
+					.sorted(this.getConfig().getMethodMappingComparator())
+					.forEach(this::writeMethodMapping);
+		}
+
+		@Override
+		protected void writeFieldMapping(final FieldMapping mapping) {
+			this.fields.add(String.format("FD: %s %s", mapping.getFullObfuscatedName(), mapping.getFullDeobfuscatedName()));
+		}
+
+		@Override
+		protected void writeMethodMapping(final MethodMapping mapping) {
+			this.methods.add(String.format("MD: %s %s %s %s",
+					mapping.getFullObfuscatedName(), mapping.getObfuscatedDescriptor(),
+					mapping.getFullDeobfuscatedName(), mapping.getDeobfuscatedDescriptor()));
 		}
 	}
 }
