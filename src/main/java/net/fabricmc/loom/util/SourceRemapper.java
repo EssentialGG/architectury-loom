@@ -284,7 +284,9 @@ public class SourceRemapper {
 		Files.walkFileTree(outRoot, new SimpleFileVisitor<>() {
 			@Override
 			public FileVisitResult visitFile(Path outPath, BasicFileAttributes attrs) throws IOException {
+				if (!Files.exists(outPath)) return FileVisitResult.CONTINUE;
 				Path srcPath = srcRoot.resolve(outRoot.relativize(outPath).toString());
+				if (!Files.exists(srcPath)) return FileVisitResult.CONTINUE;
 				List<String> src = Files.readAllLines(srcPath);
 				List<String> out = Files.readAllLines(outPath);
 				int lastSrc = IntStream.range(0, src.size()).filter(i -> src.get(i).startsWith("import")).max().orElse(0);
