@@ -69,7 +69,7 @@ public final class AccessTransformerService extends Service<AccessTransformerSer
 		Property<TinyMappingsService.Options> getMappingsServiceOptions();
 	}
 
-	public static Provider<Options> createOptions(Project project, Object atFiles) {
+	private static Provider<Options> createOptions(Project project, Object atFiles, boolean forLoaderAts) {
 		return TYPE.create(project, options -> {
 			LoomVersions accessTransformer = chooseAccessTransformer(project);
 			String mainClass = accessTransformer.equals(LoomVersions.ACCESS_TRANSFORMERS_NEO)
@@ -86,12 +86,17 @@ public final class AccessTransformerService extends Service<AccessTransformerSer
 			options.getClasspath().from(classpath);
 			options.getToolServiceOptions().set(ForgeToolService.createOptions(project));
 
-			LoomGradleExtension extension = LoomGradleExtension.get(project);
-
-			if (extension.isLegacyForge()) {
-				options.getMappingsServiceOptions().set(extension.getMappingConfiguration().getMappingsServiceOptions(project, MappingOption.WITH_SRG));
+			if (forLoaderAts) {
+				LoomGradleExtension extension = LoomGradleExtension.get(project);
+				if (extension.isLegacyForge()) {
+					options.getMappingsServiceOptions().set(extension.getMappingConfiguration().getMappingsServiceOptions(project, MappingOption.WITH_SRG));
+				}
 			}
 		});
+	}
+
+	public static Provider<Options> createOptions(Project project, Object atFiles) {
+		return createOptions(project, atFiles, false);
 	}
 
 	public static Provider<Options> createOptionsForLoaderAts(Project project, TempFiles tempFiles) {
@@ -100,7 +105,7 @@ public final class AccessTransformerService extends Service<AccessTransformerSer
 			Path userdevJar = extension.getForgeUserdevProvider().getUserdevJar().toPath();
 			return extractAccessTransformers(userdevJar, extension.getForgeUserdevProvider().getConfig().ats(), tempFiles);
 		});
-		return createOptions(project, atFiles);
+		return createOptions(project, atFiles, true);
 	}
 
 	private static List<String> extractAccessTransformers(Path jar, UserdevConfig.AccessTransformerLocation location, TempFiles tempFiles) throws IOException {
