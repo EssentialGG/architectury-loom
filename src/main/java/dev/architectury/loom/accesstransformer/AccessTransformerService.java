@@ -88,6 +88,7 @@ public final class AccessTransformerService extends Service<AccessTransformerSer
 
 			if (forLoaderAts) {
 				LoomGradleExtension extension = LoomGradleExtension.get(project);
+
 				if (extension.isLegacyForge()) {
 					options.getMappingsServiceOptions().set(extension.getMappingConfiguration().getMappingsServiceOptions(project, MappingOption.WITH_SRG));
 				}
