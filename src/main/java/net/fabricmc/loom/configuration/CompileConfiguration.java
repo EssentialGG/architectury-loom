@@ -239,7 +239,7 @@ public abstract class CompileConfiguration implements Runnable {
 			// but before MinecraftPatchedProvider.provide.
 			setupDependencyProviders(project, extension);
 
-			if (extension.isLegacyForge()) {
+			if (extension.isForge() && extension.getForgeSpec() <= 2) {
 				extension.setIntermediateMappingsProvider(GeneratedIntermediateMappingsProvider.class, provider -> {
 					provider.minecraftProvider = minecraftProvider;
 				});

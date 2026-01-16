@@ -53,7 +53,7 @@ public class ForgeUserdevProvider extends DependencyProvider {
 	private JsonObject json;
 	private UserdevConfig config;
 	private Path joinedPatches;
-	private Boolean isLegacyForge;
+	private Integer forgeSpec;
 
 	public ForgeUserdevProvider(Project project) {
 		super(project);
@@ -88,10 +88,13 @@ public class ForgeUserdevProvider extends DependencyProvider {
 
 		try (Reader reader = Files.newBufferedReader(configJson)) {
 			json = new Gson().fromJson(reader, JsonObject.class);
-			isLegacyForge = !json.has("mcp");
+			// Some Forge versions for 1.13.2 specify mcp, but have spec=1. We just "hack" this here.
+			forgeSpec = json.has("mcp") ? Math.max(2, json.get("spec").getAsInt()) : 1;
 
-			if (isLegacyForge) {
+			if (forgeSpec <= 1) {
 				json = createManifestFromForgeGradle2(dependency, json);
+			} else if (forgeSpec <= 2) {
+				addLegacyMCPRepo();
 			}
 
 			config = UserdevConfig.CODEC.parse(JsonOps.INSTANCE, json)
@@ -106,7 +109,7 @@ public class ForgeUserdevProvider extends DependencyProvider {
 
 		addDependency(config.universal(), Constants.Configurations.FORGE_UNIVERSAL);
 
-		if (!isLegacyForge && Files.notExists(joinedPatches)) {
+		if (forgeSpec >= 2 && Files.notExists(joinedPatches)) {
 			Files.write(joinedPatches, ZipUtils.unpack(userdevJar.toPath(), config.binpatches()));
 		}
 	}
@@ -177,6 +180,10 @@ public class ForgeUserdevProvider extends DependencyProvider {
 	private static JsonArray createLegacyAts() {
 		JsonArray array = new JsonArray();
 		array.add("merged_at.cfg");
+		array.add("forge_at.cfg");
+		array.add("fml_at.cfg");
+		array.add("src/main/resources/forge_at.cfg");
+		array.add("src/main/resources/fml_at.cfg");
 		return array;
 	}
 
@@ -217,12 +224,12 @@ public class ForgeUserdevProvider extends DependencyProvider {
 		});
 	}
 
-	public boolean isLegacyForge() {
-		if (isLegacyForge == null) {
+	public int getForgeSpec() {
+		if (forgeSpec == null) {
 			throw new IllegalArgumentException("Not yet resolved.");
 		}
 
-		return isLegacyForge;
+		return forgeSpec;
 	}
 
 	public File getUserdevJar() {

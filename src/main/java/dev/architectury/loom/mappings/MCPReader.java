@@ -194,8 +194,11 @@ public class MCPReader {
 
 		try (FileSystemUtil.Delegate fs = FileSystemUtil.getJarFileSystem(mcpJar, false)) {
 			Path fields = fs.getPath("fields.csv");
+			if (!Files.exists(fields)) fields = fs.getPath("conf/fields.csv");
 			Path methods = fs.getPath("methods.csv");
+			if (!Files.exists(methods)) methods = fs.getPath("conf/methods.csv");
 			Path params = fs.getPath("params.csv");
+			if (!Files.exists(params)) params = fs.getPath("conf/params.csv");
 			Pattern paramsPattern = Pattern.compile("p_[^\\d]*(\\d+)_(\\d)+_?");
 
 			try (CSVReader reader = new CSVReader(Files.newBufferedReader(fields, StandardCharsets.UTF_8))) {

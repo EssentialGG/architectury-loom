@@ -50,9 +50,10 @@ public record ClassEntry(String name, List<String> innerClasses, List<String> su
 			throw new IllegalArgumentException("Class name must end with '.class': " + name);
 		}
 
-		if (!name.contains("/")) {
-			throw new IllegalArgumentException("Class name must be in a package: " + name);
-		}
+		// breaks in some 1.7.10 classes:
+		// if (!name.contains("/")) {
+		// 	throw new IllegalArgumentException("Class name must be in a package: " + name);
+		// }
 
 		String className = name.replace(".class", "");
 
