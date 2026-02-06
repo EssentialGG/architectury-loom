@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Set;
 
 import org.gradle.api.file.FileSystemLocation;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.loom.api.ModSettings;
 

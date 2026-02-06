@@ -44,7 +44,7 @@ import dev.architectury.loom.util.Stopwatch;
 import org.cadixdev.lorenz.io.srg.SrgReader;
 import org.cadixdev.lorenz.io.srg.tsrg.TSrgWriter;
 import org.gradle.api.Project;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.mappings.layered.MappingContext;

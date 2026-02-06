@@ -7,7 +7,7 @@ import java.nio.file.Path;
 
 import dev.architectury.loom.util.LoggerFilter;
 import dev.architectury.loom.util.Stopwatch;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -72,7 +72,7 @@ public abstract class GeneratedIntermediateMappingsProvider extends Intermediate
 	}
 
 	@Override
-	public @NotNull String getName() {
+	public @NonNull String getName() {
 		return "generated-intermediate";
 	}
 }

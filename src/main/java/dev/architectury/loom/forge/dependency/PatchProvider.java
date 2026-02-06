@@ -48,7 +48,7 @@ import lzma.sdk.lzma.Encoder;
 import lzma.streams.LzmaInputStream;
 import lzma.streams.LzmaOutputStream;
 import org.gradle.api.Project;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.loom.configuration.DependencyInfo;
 import net.fabricmc.loom.configuration.providers.forge.fg2.Pack200Provider;
