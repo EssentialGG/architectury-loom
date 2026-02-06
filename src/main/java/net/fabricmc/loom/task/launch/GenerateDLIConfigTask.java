@@ -101,6 +101,9 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 	@Input
 	protected abstract Property<String> getNativesDirectoryPath();
 
+	@Input
+	protected abstract Property<String> getProductionNamespace();
+
 	@InputFile
 	@Optional
 	public abstract RegularFileProperty getRemapClasspathFile();
@@ -147,6 +150,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 		getAssetsDirectoryPath().set(new File(getExtension().getFiles().getUserCache(), "assets").getAbsolutePath());
 		getNativesDirectoryPath().set(getExtension().getFiles().getNativesDirectory(getProject()).getAbsolutePath());
 		getDevLauncherConfig().set(getExtension().getFiles().getDevLauncherConfig());
+		getProductionNamespace().set(getExtension().getProductionNamespaceEnum().toString());
 
 		getPlatformMappingFile().set(getProject().getLayout().file(getProject().provider(() ->
 				getExtension().disableObfuscation() ? null : getExtension().getPlatformMappingFile().toFile())));
@@ -187,7 +191,8 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 		final LaunchConfig launchConfig = new LaunchConfig()
 				.property(!quilt ? "fabric.development" : "loader.development", "true")
 				.property("log4j.configurationFile", getLog4jConfigPaths().get())
-				.property("log4j2.formatMsgNoLookups", "true");
+				.property("log4j2.formatMsgNoLookups", "true")
+				.property("fabric.defaultModDistributionNamespace", getProductionNamespace().get());
 
 		if (getRemapClasspathFile().isPresent()) {
 			launchConfig

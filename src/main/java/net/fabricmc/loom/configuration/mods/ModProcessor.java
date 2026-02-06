@@ -58,7 +58,6 @@ import org.slf4j.LoggerFactory;
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.RemapConfigurationSettings;
 import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
-import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.configuration.mods.dependency.ModDependency;
 import net.fabricmc.loom.configuration.mods.extension.ModProcessorExtension;
 import net.fabricmc.loom.configuration.providers.mappings.MappingConfiguration;
@@ -172,8 +171,10 @@ public class ModProcessor {
 	private void remapJars(List<ModDependency> remapList) throws IOException {
 		final LoomGradleExtension extension = LoomGradleExtension.get(project);
 		final MappingConfiguration mappingConfiguration = extension.getMappingConfiguration();
-		String fromM = IntermediaryNamespaces.runtimeIntermediary(project);
+		MappingsNamespace productionNamespace = extension.getProductionNamespaceEnum();
+		String fromM = productionNamespace.toString();
 		Stopwatch stopwatch = Stopwatch.createStarted();
+
 		Set<String> knownIndyBsms = new HashSet<>(extension.getKnownIndyBsms().get());
 
 		for (ModDependency modDependency : remapList) {
@@ -202,7 +203,7 @@ public class ModProcessor {
 		final List<ModProcessorExtension> activeExtensions = ModProcessorExtension.EXTENSIONS.stream()
 				.filter(e -> remapList.stream().anyMatch(e::appliesTo))
 				.toList();
-		final ModProcessorExtension.Context context = new ModProcessorExtension.Context(fromM, toM, remapList);
+		final ModProcessorExtension.Context context = new ModProcessorExtension.Context(productionNamespace.toString(), toM, remapList);
 
 		for (ModProcessorExtension modProcessorExtension : activeExtensions) {
 			LOGGER.info("Applying mod processor extension: {}", modProcessorExtension.getClass().getSimpleName());
@@ -216,12 +217,12 @@ public class ModProcessor {
 		}
 
 		for (RemapperExtensionHolder holder : extension.getRemapperExtensions().get()) {
-			holder.apply(builder, fromM, toM);
+			holder.apply(builder, productionNamespace.toString(), toM);
 		}
 
 		final TinyRemapper remapper = builder.build();
 
-		remapper.readClassPath(extension.getMinecraftJars(IntermediaryNamespaces.runtimeIntermediaryNamespace(project)).toArray(Path[]::new));
+		remapper.readClassPath(extension.getMinecraftJars(productionNamespace).toArray(Path[]::new));
 
 		final Map<ModDependency, OutputConsumerPath> outputConsumerMap = new HashMap<>();
 		final Map<ModDependency, Pair<byte[], String>> accessWidenerMap = new HashMap<>();
@@ -259,7 +260,7 @@ public class ModProcessor {
 
 					if (accessWidenerData != null) {
 						LOGGER.debug("Remapping access widener in {}", dependency.getInputFile());
-						byte[] remappedAw = AccessWidenerUtils.remapAccessWidener(accessWidenerData.content(), remapper.getEnvironment().getRemapper());
+						byte[] remappedAw = AccessWidenerUtils.remapAccessWidener(accessWidenerData.content(), remapper.getEnvironment().getRemapper(), productionNamespace.toString(), toM);
 						accessWidenerMap.put(dependency, new Pair<>(remappedAw, accessWidenerData.path()));
 					}
 

@@ -96,6 +96,8 @@ public interface LoomGradleExtension extends LoomGradleExtensionAPI {
 
 	void setIntermediaryMinecraftProvider(IntermediaryMinecraftProvider<?> intermediaryMinecraftProvider);
 
+	MappingsNamespace getProductionNamespaceEnum();
+
 	SrgMinecraftProvider<?> getSrgMinecraftProvider();
 
 	void setSrgMinecraftProvider(SrgMinecraftProvider<?> srgMinecraftProvider);

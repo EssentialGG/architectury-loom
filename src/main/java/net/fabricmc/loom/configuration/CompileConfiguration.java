@@ -59,6 +59,7 @@ import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.plugins.JavaPluginExtension;
+import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.AbstractCopyTask;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskContainer;
@@ -68,6 +69,8 @@ import org.gradle.api.tasks.testing.Test;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.InterfaceInjectionExtensionAPI;
+import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
+import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.build.mixin.GroovyApInvoker;
 import net.fabricmc.loom.build.mixin.JavaApInvoker;
 import net.fabricmc.loom.build.mixin.KaptApInvoker;
@@ -75,6 +78,7 @@ import net.fabricmc.loom.build.mixin.ScalaApInvoker;
 import net.fabricmc.loom.configuration.accesswidener.AccessWidenerJarProcessor;
 import net.fabricmc.loom.configuration.ifaceinject.InterfaceInjectionProcessor;
 import net.fabricmc.loom.configuration.mods.ModConfigurationRemapper;
+import net.fabricmc.loom.configuration.processors.JsrAnnotationRemapperProcessor;
 import net.fabricmc.loom.configuration.processors.MinecraftJarProcessorManager;
 import net.fabricmc.loom.configuration.processors.ModJavadocProcessor;
 import net.fabricmc.loom.configuration.processors.speccontext.DebofConfiguration;
@@ -92,6 +96,7 @@ import net.fabricmc.loom.configuration.providers.minecraft.mapped.SrgMinecraftPr
 import net.fabricmc.loom.extension.MixinExtension;
 import net.fabricmc.loom.task.service.ClasspathGroupService;
 import net.fabricmc.loom.util.Checksum;
+import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.ExceptionUtil;
 import net.fabricmc.loom.util.ProcessUtil;
 import net.fabricmc.loom.util.gradle.GradleUtils;
@@ -217,6 +222,14 @@ public abstract class CompileConfiguration implements Runnable {
 		final MinecraftMetadataProvider metadataProvider = MinecraftMetadataProvider.create(configContext);
 		extension.setMetadataProvider(metadataProvider);
 
+		if (metadataProvider.getVersionMeta().isVersionOrNewer(Constants.RELEASE_TIME_1_21_11_UNOBFUSCATED_SNAPSHOTS) && !metadataProvider.getVersionMeta().downloads().containsKey("client_mappings")) {
+			extension.getProductionNamespace().convention(MappingsNamespace.OFFICIAL.toString());
+		} else {
+			extension.getProductionNamespace().convention(project.provider(() -> IntermediaryNamespaces.runtimeIntermediary(project)));
+		}
+
+		extension.getProductionNamespace().finalizeValueOnRead();
+
 		var jarConfiguration = extension.getMinecraftJarConfiguration().get();
 
 		// Provide the vanilla mc jars
@@ -324,6 +337,10 @@ public abstract class CompileConfiguration implements Runnable {
 			extension.addMinecraftJarProcessor(InterfaceInjectionProcessor.class, "fabric-loom:interface-inject", interfaceInjection.getEnableDependencyInterfaceInjection().get());
 		}
 
+		if (!extension.getRemapJsrAnnotationsToJetBrains().get()) {
+			extension.addMinecraftJarProcessor(JsrAnnotationRemapperProcessor.class, "fabric-loom:jsr-annotations");
+		}
+
 		if (extension.isForgeLike()) {
 			FileCollection accessTransformers;
 
@@ -381,7 +398,10 @@ public abstract class CompileConfiguration implements Runnable {
 		}
 
 		getProject().getTasks().named(JavaPlugin.TEST_TASK_NAME, Test.class, test -> {
-			test.getInputs().property("LoomClassPathGroups", ClasspathGroupService.create(getProject()));
+			Provider<ClasspathGroupService.Options> optionsProvider = ClasspathGroupService.create(getProject());
+			test.getInputs().property("LoomClassPathGroups", optionsProvider);
+			test.getInputs().files(optionsProvider.map((ClasspathGroupService.Options::getExternalClasspathGroups)));
+
 			test.doFirst(new Action<Task>() {
 				@Override
 				public void execute(Task task) {
