@@ -24,8 +24,6 @@
 
 package net.fabricmc.loom.test.unit.layeredmappings
 
-import spock.lang.Specification
-
 import net.fabricmc.loom.configuration.providers.mappings.LayeredMappingSpec
 import net.fabricmc.loom.configuration.providers.mappings.LayeredMappingSpecBuilderImpl
 import net.fabricmc.loom.configuration.providers.mappings.file.FileMappingsSpec
@@ -35,7 +33,7 @@ import net.fabricmc.loom.configuration.providers.mappings.parchment.ParchmentMap
 import net.fabricmc.loom.configuration.providers.mappings.utils.MavenFileSpec
 import net.fabricmc.loom.util.ClosureAction
 
-class LayeredMappingSpecBuilderTest extends Specification {
+class LayeredMappingSpecBuilderTest extends LayeredMappingsSpecification {
 	def "simple mojmap" () {
 		when:
 		def spec = layered {
@@ -44,7 +42,7 @@ class LayeredMappingSpecBuilderTest extends Specification {
 		def layers = spec.layers()
 		then:
 		layers.size() == 2
-		spec.version == "layered+hash.2198"
+		spec.version == "layered+hash.40545"
 		layers[0].class == IntermediaryMappingsSpec
 		layers[1].class == MojangMappingsSpec
 	}
@@ -59,7 +57,7 @@ class LayeredMappingSpecBuilderTest extends Specification {
 		def layers = spec.layers()
 		def parchment = layers[2] as ParchmentMappingsSpec
 		then:
-		spec.version == "layered+hash.863752751"
+		spec.version == "layered+hash.864941508"
 		layers.size() == 3
 		layers[0].class == IntermediaryMappingsSpec
 		layers[1].class == MojangMappingsSpec
@@ -79,7 +77,7 @@ class LayeredMappingSpecBuilderTest extends Specification {
 		def layers = spec.layers()
 		def parchment = layers[2] as ParchmentMappingsSpec
 		then:
-		spec.version == "layered+hash.863752757"
+		spec.version == "layered+hash.864941514"
 		layers.size() == 3
 		layers[0].class == IntermediaryMappingsSpec
 		layers[1].class == MojangMappingsSpec
@@ -99,7 +97,7 @@ class LayeredMappingSpecBuilderTest extends Specification {
 		def layers = spec.layers()
 		def parchment = layers[2] as ParchmentMappingsSpec
 		then:
-		spec.version == "layered+hash.1144427140"
+		spec.version == "layered+hash.1143238383"
 		layers.size() == 3
 		layers[0].class == IntermediaryMappingsSpec
 		layers[1].class == MojangMappingsSpec
@@ -123,7 +121,7 @@ class LayeredMappingSpecBuilderTest extends Specification {
 	}
 
 	LayeredMappingSpec layered(@DelegatesTo(LayeredMappingSpecBuilderImpl) Closure cl) {
-		LayeredMappingSpecBuilderImpl builder = new LayeredMappingSpecBuilderImpl()
+		LayeredMappingSpecBuilderImpl builder = new LayeredMappingSpecBuilderImpl(null)
 		new ClosureAction(cl).execute(builder)
 		return builder.build()
 	}

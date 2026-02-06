@@ -6,6 +6,7 @@ mockito = "5.20.0"
 java-debug = "0.53.1"
 mixin = "0.15.3+mixin.0.8.7"
 bouncycastle = "1.82"
+pack200 = "0.1.3"
 
 gradle-nightly = "9.3.0-20251108020513+0000"
 fabric-loader = "0.16.14"
@@ -23,3 +24,4 @@ fabric-loader = { module = "net.fabricmc:fabric-loader", version.ref = "fabric-l
 bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 bcpkix = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 bcutil = { module = "org.bouncycastle:bcutil-jdk18on", version.ref = "bouncycastle" }
+pack200 = { module = "dev.architectury.architectury-pack200:dev.architectury.architectury-pack200.gradle.plugin", version.ref = "pack200" }

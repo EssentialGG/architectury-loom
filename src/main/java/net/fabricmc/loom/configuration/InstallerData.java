@@ -45,6 +45,8 @@ import net.fabricmc.loom.util.Constants;
 
 public record InstallerData(String version, JsonObject installerJson) {
 	public static final String INSTALLER_PATH = "fabric-installer.json";
+	// ARCH: Quilt support
+	public static final String QUILT_INSTALLER_PATH = "quilt_installer.json";
 	private static final Logger LOGGER = LoggerFactory.getLogger(InstallerData.class);
 
 	public static InstallerData fromBytes(byte[] bytes, String version) {

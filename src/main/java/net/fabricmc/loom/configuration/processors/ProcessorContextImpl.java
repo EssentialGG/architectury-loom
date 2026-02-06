@@ -24,6 +24,8 @@
 
 package net.fabricmc.loom.configuration.processors;
 
+import dev.architectury.loom.mappings.MappingOption;
+
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
 import net.fabricmc.loom.api.processor.ProcessorContext;
@@ -63,7 +65,8 @@ public record ProcessorContextImpl(ConfigContext configContext, MinecraftJar min
 	@Override
 	public MemoryMappingTree getMappings() {
 		LoomGradleExtension extension = LoomGradleExtension.get(configContext().project());
-		return extension.getMappingConfiguration().getMappingsService(configContext().project(), configContext().serviceFactory()).getMappingTree();
+		final MappingOption mappingOption = MappingOption.forPlatform(extension);
+		return extension.getMappingConfiguration().getMappingsService(configContext().project(), configContext().serviceFactory(), mappingOption).getMappingTree();
 	}
 
 	@Override

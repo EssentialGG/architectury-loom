@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
+import dev.architectury.loom.forge.dependency.ForgeModClassesService;
 import org.gradle.api.Project;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
@@ -50,7 +51,11 @@ import org.gradle.api.specs.Spec;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.JavaExec;
+import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Optional;
 import org.gradle.process.ExecOperations;
+import org.gradle.process.ProcessForkOptions;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +64,7 @@ import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.configuration.ide.RunConfig;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.Platform;
+import net.fabricmc.loom.util.service.ScopedServiceFactory;
 
 public abstract class AbstractRunTask extends JavaExec {
 	private static final Logger LOGGER = LoggerFactory.getLogger(AbstractRunTask.class);
@@ -85,6 +91,15 @@ public abstract class AbstractRunTask extends JavaExec {
 	// We control the classpath, as we use a ArgFile to pass it over the command line: https://docs.oracle.com/javase/7/docs/technotes/tools/windows/javac.html#commandlineargfile
 	@InputFiles
 	protected abstract ConfigurableFileCollection getInternalClasspath();
+
+	@ApiStatus.Internal
+	@Nested
+	@Optional
+	protected abstract Property<ForgeModClassesService.Options> getModClassesOptions();
+
+	@ApiStatus.Internal
+	@Input
+	protected abstract Property<String> getRunConfigName();
 
 	public AbstractRunTask(Function<Project, RunConfig> configProvider) {
 		super();
@@ -118,6 +133,9 @@ public abstract class AbstractRunTask extends JavaExec {
 		File buildCache = LoomGradleExtension.get(getProject()).getFiles().getProjectBuildCache();
 		File argFile = new File(buildCache, "argFiles/" + getName());
 		getArgFilePath().set(argFile.getAbsolutePath());
+
+		getModClassesOptions().set(ForgeModClassesService.createOptions(getProject()));
+		getRunConfigName().set(config.map(runConfig -> runConfig.name));
 	}
 
 	private boolean canUseArgFile() {
@@ -151,6 +169,7 @@ public abstract class AbstractRunTask extends JavaExec {
 
 		setWorkingDir(new File(getProjectDir().get(), getInternalRunDir().get()));
 		environment(getInternalEnvironmentVars().get());
+		configureForgeModClasses(this);
 
 		// Wrap with XVFB if enabled and on Linux
 		if (getUseXvfb().get()) {
@@ -180,6 +199,18 @@ public abstract class AbstractRunTask extends JavaExec {
 			execSpec.setWorkingDir(getWorkingDir());
 			execSpec.setEnvironment(getEnvironment());
 		});
+	}
+
+	protected void configureForgeModClasses(ProcessForkOptions forkOptions) {
+		try (var serviceFactory = new ScopedServiceFactory()) {
+			ForgeModClassesService service = serviceFactory.getOrNull(getModClassesOptions());
+
+			if (service != null && ForgeModClassesService.VARIABLE_KEY.equals(forkOptions.getEnvironment().get(ForgeModClassesService.ENVIRONMENT_VARIABLE))) {
+				forkOptions.environment(ForgeModClassesService.ENVIRONMENT_VARIABLE, service.getModClasses(getRunConfigName().get()));
+			}
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	@Override

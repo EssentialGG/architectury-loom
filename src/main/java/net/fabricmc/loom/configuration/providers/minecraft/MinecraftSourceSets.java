@@ -69,6 +69,10 @@ public abstract sealed class MinecraftSourceSets permits MinecraftSourceSets.Sin
 				configuration.extendsFrom(configurations.getByName(configurationName.mcLibsRuntimeName()));
 				configuration.extendsFrom(configurations.getByName(Constants.Configurations.LOADER_DEPENDENCIES));
 				configuration.extendsFrom(configurations.getByName(Constants.Configurations.LOOM_DEVELOPMENT_DEPENDENCIES));
+
+				if (LoomGradleExtension.get(project).isForgeLike()) {
+					configurations.getByName(Constants.Configurations.FORGE_RUNTIME_LIBRARY).extendsFrom(configuration);
+				}
 			});
 
 			configurations.register(configurationName.compile(), configuration -> {

@@ -38,13 +38,27 @@ import java.util.function.Consumer;
 
 import javax.inject.Inject;
 
+import dev.architectury.loom.accesstransformer.AccessTransformerJarProcessor;
+import dev.architectury.loom.forge.ForgeSourcesService;
+import dev.architectury.loom.forge.dependency.DependencyProviders;
+import dev.architectury.loom.forge.dependency.ForgeLibrariesProvider;
+import dev.architectury.loom.forge.dependency.ForgeProvider;
+import dev.architectury.loom.forge.dependency.ForgeRunsProvider;
+import dev.architectury.loom.forge.dependency.ForgeUniversalProvider;
+import dev.architectury.loom.forge.dependency.ForgeUserdevProvider;
+import dev.architectury.loom.forge.dependency.PatchProvider;
+import dev.architectury.loom.forge.dependency.SrgProvider;
+import dev.architectury.loom.forge.minecraft.ForgeMinecraftProvider;
+import dev.architectury.loom.mcpconfig.McpConfigProvider;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.logging.Logger;
 import org.gradle.api.logging.Logging;
 import org.gradle.api.plugins.JavaPlugin;
+import org.gradle.api.plugins.JavaPluginExtension;
 import org.gradle.api.tasks.AbstractCopyTask;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskContainer;
@@ -61,9 +75,11 @@ import net.fabricmc.loom.build.mixin.KaptApInvoker;
 import net.fabricmc.loom.build.mixin.ScalaApInvoker;
 import net.fabricmc.loom.configuration.accesswidener.AccessWidenerJarProcessor;
 import net.fabricmc.loom.configuration.ifaceinject.InterfaceInjectionProcessor;
+import net.fabricmc.loom.configuration.mods.ModConfigurationRemapper;
 import net.fabricmc.loom.configuration.processors.MinecraftJarProcessorManager;
 import net.fabricmc.loom.configuration.processors.ModJavadocProcessor;
 import net.fabricmc.loom.configuration.processors.speccontext.DebofConfiguration;
+import net.fabricmc.loom.configuration.providers.mappings.GeneratedIntermediateMappingsProvider;
 import net.fabricmc.loom.configuration.providers.mappings.LayeredMappingsFactory;
 import net.fabricmc.loom.configuration.providers.mappings.MappingConfiguration;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftMetadataProvider;
@@ -71,7 +87,9 @@ import net.fabricmc.loom.configuration.providers.minecraft.MinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftSourceSets;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.AbstractMappedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.IntermediaryMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.MojangMappedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.NamedMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.SrgMinecraftProvider;
 import net.fabricmc.loom.extension.MixinExtension;
 import net.fabricmc.loom.task.service.ClasspathGroupService;
 import net.fabricmc.loom.util.Checksum;
@@ -145,6 +163,25 @@ public abstract class CompileConfiguration implements Runnable {
 
 			configureDecompileTasks(configContext);
 			configureTestTask();
+
+			if (extension.isForgeLike()) {
+				if (extension.isDataGenEnabled()) {
+					getProject().getExtensions().getByType(JavaPluginExtension.class).getSourceSets().getByName("main").resources(files -> {
+						files.srcDir(getProject().file("src/generated/resources"));
+					});
+				}
+
+				// TODO: Find a better place for this?
+				//   This has to be after dependencyManager.handleDependencies() above
+				//   because of https://github.com/architectury/architectury-loom/issues/72.
+				if (!ModConfigurationRemapper.isCIBuild()) {
+					try {
+						ForgeSourcesService.addForgeSourcesDuringProjectConfiguration(getProject(), configContext.serviceFactory());
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+			}
 		});
 
 		finalizedBy("eclipse", "genEclipseRuns");
@@ -159,6 +196,14 @@ public abstract class CompileConfiguration implements Runnable {
 		// see http://yodaconditions.net/blog/fix-for-java-file-encoding-problems-with-gradle.html
 		getTasks().withType(AbstractCopyTask.class).configureEach(abstractCopyTask -> abstractCopyTask.setFilteringCharset(StandardCharsets.UTF_8.name()));
 		getTasks().withType(JavaCompile.class).configureEach(javaCompile -> javaCompile.getOptions().setEncoding(StandardCharsets.UTF_8.name()));
+
+		if (extension.isForgeLike()) {
+			// Create default mod from main source set
+			extension.mods(mods -> {
+				final SourceSet main = getProject().getExtensions().getByType(JavaPluginExtension.class).getSourceSets().getByName(SourceSet.MAIN_SOURCE_SET_NAME);
+				mods.create("main").sourceSet(main);
+			});
+		}
 
 		if (getProject().getPluginManager().hasPlugin("org.jetbrains.kotlin.kapt")) {
 			// If loom is applied after kapt, then kapt will use the AP arguments too early for loom to pass the arguments we need for mixin.
@@ -177,6 +222,16 @@ public abstract class CompileConfiguration implements Runnable {
 
 		// Provide the vanilla mc jars
 		final MinecraftProvider minecraftProvider = jarConfiguration.createMinecraftProvider(metadataProvider, configContext);
+
+		if (extension.isForgeLike() && !(minecraftProvider instanceof ForgeMinecraftProvider)) {
+			throw new UnsupportedOperationException("Using %s with split jars is not supported!".formatted(extension.getPlatform().get().displayName()));
+		}
+
+		if (extension.isForgeLike() && extension.disableObfuscation()) {
+			// TODO: Allow setting up Forge and NeoForge without obfuscation
+			throw new UnsupportedOperationException("Using %s without obfuscation is not supported!".formatted(extension.getPlatform().get().displayName()));
+		}
+
 		extension.setMinecraftProvider(minecraftProvider);
 		minecraftProvider.provide();
 
@@ -187,11 +242,36 @@ public abstract class CompileConfiguration implements Runnable {
 			// Created any layered mapping files.
 			LayeredMappingsFactory.afterEvaluate(configContext);
 
+			// This needs to run after MinecraftProvider.initFiles and MinecraftLibraryProvider.provide
+			// but before MinecraftPatchedProvider.provide.
+			setupDependencyProviders(project, extension);
+
+			if (extension.isLegacyForge()) {
+				extension.setIntermediateMappingsProvider(GeneratedIntermediateMappingsProvider.class, provider -> {
+					provider.minecraftProvider = minecraftProvider;
+				});
+			}
+
 			// Resolve the mapping files from the configuration
 			final DependencyInfo mappingsDep = DependencyInfo.create(getProject(), Configurations.MAPPINGS);
 			final MappingConfiguration mappingConfiguration = MappingConfiguration.create(getProject(), configContext.serviceFactory(), mappingsDep, minecraftProvider);
 			extension.setMappingConfiguration(mappingConfiguration);
+
+			if (extension.isForgeLike()) {
+				ForgeLibrariesProvider.provide(mappingConfiguration, project);
+				((ForgeMinecraftProvider) minecraftProvider).getPatchedProvider().provide(configContext.serviceFactory());
+			}
+
+			mappingConfiguration.setupPost(project);
 			mappingConfiguration.applyToProject(getProject(), mappingsDep);
+		}
+
+		if (extension.isForgeLike()) {
+			extension.setForgeRunsProvider(ForgeRunsProvider.create(project));
+		}
+
+		if (minecraftProvider instanceof ForgeMinecraftProvider patched) {
+			patched.getPatchedProvider().remapJar(configContext.serviceFactory());
 		}
 
 		// Provide the remapped mc jars
@@ -215,6 +295,18 @@ public abstract class CompileConfiguration implements Runnable {
 
 		extension.setNamedMinecraftProvider(namedMinecraftProvider);
 		namedMinecraftProvider.provide(provideContext);
+
+		if (extension.isForge()) {
+			final SrgMinecraftProvider<?> srgMinecraftProvider = jarConfiguration.createSrgMinecraftProvider(project);
+			extension.setSrgMinecraftProvider(srgMinecraftProvider);
+			srgMinecraftProvider.provide(provideContext);
+		}
+
+		if (extension.isForgeLike() && extension.getForgeProvider().usesMojangAtRuntime()) {
+			final MojangMappedMinecraftProvider<?> mojangMappedMinecraftProvider = jarConfiguration.createMojangMappedMinecraftProvider(project);
+			extension.setMojangMappedMinecraftProvider(mojangMappedMinecraftProvider);
+			mojangMappedMinecraftProvider.provide(provideContext);
+		}
 	}
 
 	private void registerGameProcessors(ConfigContext configContext) {
@@ -231,6 +323,18 @@ public abstract class CompileConfiguration implements Runnable {
 
 		if (interfaceInjection.isEnabled()) {
 			extension.addMinecraftJarProcessor(InterfaceInjectionProcessor.class, "fabric-loom:interface-inject", interfaceInjection.getEnableDependencyInterfaceInjection().get());
+		}
+
+		if (extension.isForgeLike()) {
+			FileCollection accessTransformers;
+
+			if (extension.isNeoForge()) {
+				accessTransformers = extension.getNeoForge().getAccessTransformers();
+			} else {
+				accessTransformers = extension.getForge().getAccessTransformers();
+			}
+
+			extension.addMinecraftJarProcessor(AccessTransformerJarProcessor.class, "loom:access-transformer", configContext.project(), accessTransformers);
 		}
 	}
 
@@ -471,6 +575,28 @@ public abstract class CompileConfiguration implements Runnable {
 
 	private void finalizedBy(String a, String b) {
 		getTasks().named(a).configure(task -> task.finalizedBy(getTasks().named(b)));
+	}
+
+	public static void setupDependencyProviders(Project project, LoomGradleExtension extension) {
+		DependencyProviders dependencyProviders = new DependencyProviders();
+		extension.setDependencyProviders(dependencyProviders);
+
+		if (extension.isForgeLike()) {
+			dependencyProviders.addProvider(new ForgeProvider(project));
+			dependencyProviders.addProvider(new ForgeUserdevProvider(project));
+		}
+
+		if (extension.shouldGenerateSrgTiny()) {
+			dependencyProviders.addProvider(new SrgProvider(project));
+		}
+
+		if (extension.isForgeLike()) {
+			dependencyProviders.addProvider(new ForgeUniversalProvider(project));
+			dependencyProviders.addProvider(new McpConfigProvider(project));
+			dependencyProviders.addProvider(new PatchProvider(project));
+		}
+
+		dependencyProviders.handleDependencies(project);
 	}
 
 	private void afterEvaluationWithService(Consumer<ServiceFactory> consumer) {

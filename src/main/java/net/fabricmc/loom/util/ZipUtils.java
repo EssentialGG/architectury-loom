@@ -184,6 +184,12 @@ public class ZipUtils {
 		}
 	}
 
+	public static void deleteIfExists(Path zip, String path) throws IOException {
+		try (FileSystemUtil.Delegate fs = FileSystemUtil.getJarFileSystem(zip, false)) {
+			Files.deleteIfExists(fs.getPath(path));
+		}
+	}
+
 	public static int transformString(Path zip, Collection<Pair<String, UnsafeUnaryOperator<String>>> transforms) throws IOException {
 		return transformString(zip, transforms.stream());
 	}
@@ -281,7 +287,10 @@ public class ZipUtils {
 
 		while (iterator.hasNext()) {
 			Pair<String, UnsafeUnaryOperator<T>> next = iterator.next();
-			map.put(next.left(), next.right());
+
+			if (next != null) {
+				map.put(next.left(), next.right());
+			}
 		}
 
 		return map;

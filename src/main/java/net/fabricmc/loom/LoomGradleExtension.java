@@ -28,6 +28,15 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 
+import dev.architectury.loom.forge.dependency.DependencyProviders;
+import dev.architectury.loom.forge.dependency.ForgeProvider;
+import dev.architectury.loom.forge.dependency.ForgeRunsProvider;
+import dev.architectury.loom.forge.dependency.ForgeUniversalProvider;
+import dev.architectury.loom.forge.dependency.ForgeUserdevProvider;
+import dev.architectury.loom.forge.dependency.PatchProvider;
+import dev.architectury.loom.forge.dependency.SrgProvider;
+import dev.architectury.loom.mcpconfig.McpConfigProvider;
+import org.gradle.api.GradleException;
 import org.gradle.api.Project;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
@@ -44,10 +53,13 @@ import net.fabricmc.loom.configuration.providers.minecraft.MinecraftMetadataProv
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.library.LibraryProcessorManager;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.IntermediaryMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.MojangMappedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.NamedMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.SrgMinecraftProvider;
 import net.fabricmc.loom.extension.LoomFiles;
 import net.fabricmc.loom.extension.MixinExtension;
 import net.fabricmc.loom.extension.RemapperExtensionHolder;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.download.DownloadBuilder;
 
 @ApiStatus.Internal
@@ -84,11 +96,30 @@ public interface LoomGradleExtension extends LoomGradleExtensionAPI {
 
 	void setIntermediaryMinecraftProvider(IntermediaryMinecraftProvider<?> intermediaryMinecraftProvider);
 
+	SrgMinecraftProvider<?> getSrgMinecraftProvider();
+
+	void setSrgMinecraftProvider(SrgMinecraftProvider<?> srgMinecraftProvider);
+
+	MojangMappedMinecraftProvider<?> getMojangMappedMinecraftProvider();
+
+	void setMojangMappedMinecraftProvider(MojangMappedMinecraftProvider<?> srgMinecraftProvider);
+
 	default List<Path> getMinecraftJars(MappingsNamespace mappingsNamespace) {
 		return switch (mappingsNamespace) {
 		case NAMED -> getNamedMinecraftProvider().getMinecraftJarPaths();
 		case INTERMEDIARY -> getIntermediaryMinecraftProvider().getMinecraftJarPaths();
 		case OFFICIAL, CLIENT_OFFICIAL, SERVER_OFFICIAL -> getMinecraftProvider().getMinecraftJars();
+		case SRG -> {
+			ModPlatform.assertPlatform(this, ModPlatform.FORGE, () -> "SRG jars are only available on Forge.");
+			yield getSrgMinecraftProvider().getMinecraftJarPaths();
+		}
+		case MOJANG -> {
+			if (!this.isForgeLike() || !this.getForgeProvider().usesMojangAtRuntime()) {
+				throw new GradleException("Mojang-mapped jars are only available on NeoForge / Forge 50+.");
+			}
+
+			yield getMojangMappedMinecraftProvider().getMinecraftJarPaths();
+		}
 		};
 	}
 
@@ -131,4 +162,74 @@ public interface LoomGradleExtension extends LoomGradleExtensionAPI {
 	 * When enabled disable all forms of remapping.
 	 */
 	boolean disableObfuscation();
+
+	// ===================
+	//  Architectury Loom
+	// ===================
+	default PatchProvider getPatchProvider() {
+		return getDependencyProviders().getProvider(PatchProvider.class);
+	}
+
+	default McpConfigProvider getMcpConfigProvider() {
+		return getDependencyProviders().getProvider(McpConfigProvider.class);
+	}
+
+	default boolean isDataGenEnabled() {
+		return isForge() && !getForge().getDataGenMods().isEmpty();
+	}
+
+	default boolean isForgeLikeAndOfficial() {
+		return isForgeLike() && getMcpConfigProvider().isOfficial();
+	}
+
+	default boolean isForgeLikeAndNotOfficial() {
+		return isForgeLike() && !getMcpConfigProvider().isOfficial();
+	}
+
+	default boolean isLegacyForge() {
+		return isForge() && getForgeUserdevProvider().isLegacyForge();
+	}
+
+	default boolean isModernForge() {
+		return isForge() && !isLegacyForge();
+	}
+
+	default boolean isModernForgeLike() {
+		return isForgeLike() && !isLegacyForge();
+	}
+
+	DependencyProviders getDependencyProviders();
+
+	void setDependencyProviders(DependencyProviders dependencyProviders);
+
+	default SrgProvider getSrgProvider() {
+		return getDependencyProviders().getProvider(SrgProvider.class);
+	}
+
+	default ForgeUniversalProvider getForgeUniversalProvider() {
+		return getDependencyProviders().getProvider(ForgeUniversalProvider.class);
+	}
+
+	default ForgeUserdevProvider getForgeUserdevProvider() {
+		return getDependencyProviders().getProvider(ForgeUserdevProvider.class);
+	}
+
+	default ForgeProvider getForgeProvider() {
+		return getDependencyProviders().getProvider(ForgeProvider.class);
+	}
+
+	ForgeRunsProvider getForgeRunsProvider();
+	void setForgeRunsProvider(ForgeRunsProvider forgeRunsProvider);
+
+	/**
+	 * The mapping file that is specific to the platform settings.
+	 * It contains SRG (Forge/common) or Mojang mappings (NeoForge) as needed.
+	 *
+	 * @return the platform mapping file path
+	 */
+	default Path getPlatformMappingFile() {
+		return getMappingConfiguration().getPlatformMappingFile(this);
+	}
+
+	boolean manualRefreshDeps();
 }

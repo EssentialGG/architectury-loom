@@ -64,11 +64,13 @@ import org.slf4j.LoggerFactory;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
+import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.task.service.ClientEntriesService;
 import net.fabricmc.loom.task.service.JarManifestService;
 import net.fabricmc.loom.util.Check;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.ExceptionUtil;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.ZipReprocessorUtil;
 import net.fabricmc.loom.util.ZipUtils;
 import net.fabricmc.loom.util.gradle.SourceSetHelper;
@@ -123,13 +125,17 @@ public abstract class AbstractRemapJarTask extends Jar {
 	@Optional
 	protected abstract Property<ClientEntriesService.Options> getClientEntriesServiceOptions();
 
+	@Input
+	@ApiStatus.Internal
+	protected abstract Property<ModPlatform> getModPlatform();
+
 	private final Provider<JarManifestService> jarManifestServiceProvider;
 
 	@Inject
 	public AbstractRemapJarTask() {
 		from(getProject().zipTree(getInputFile()));
 		getSourceNamespace().convention(MappingsNamespace.NAMED.toString()).finalizeValueOnRead();
-		getTargetNamespace().convention(MappingsNamespace.INTERMEDIARY.toString()).finalizeValueOnRead();
+		getTargetNamespace().convention(getProject().provider(() -> IntermediaryNamespaces.runtimeIntermediary(getProject()))).finalizeValueOnRead();
 		getIncludesClientOnlyClasses().convention(false).finalizeValueOnRead();
 		getJarType().finalizeValueOnRead();
 
@@ -144,6 +150,8 @@ public abstract class AbstractRemapJarTask extends Jar {
 
 		jarManifestServiceProvider = JarManifestService.get(getProject());
 		usesService(jarManifestServiceProvider);
+
+		getModPlatform().value(LoomGradleExtension.get(getProject()).getPlatform()).finalizeValue();
 	}
 
 	public final <P extends AbstractRemapParams> void submitWork(Class<? extends AbstractRemapAction<P>> workAction, Action<P> action) {
@@ -161,6 +169,8 @@ public abstract class AbstractRemapJarTask extends Jar {
 
 			params.getJarManifestService().set(jarManifestServiceProvider);
 			params.getEntryCompression().set(getEntryCompression());
+
+			params.getPlatform().set(getModPlatform());
 
 			if (getIncludesClientOnlyClasses().get()) {
 				final List<String> clientOnlyEntries;
@@ -215,6 +225,8 @@ public abstract class AbstractRemapJarTask extends Jar {
 		MapProperty<String, String> getManifestAttributes();
 
 		ListProperty<String> getClientOnlyEntries();
+
+		Property<ModPlatform> getPlatform();
 	}
 
 	protected void applyClientOnlyManifestAttributes(AbstractRemapParams params, List<String> entries) {
@@ -266,8 +278,10 @@ public abstract class AbstractRemapJarTask extends Jar {
 					mergeManifests(manifest, sourceManifest);
 				}
 
-				getParameters().getJarManifestService().get().apply(manifest, getParameters().getManifestAttributes().get());
-				manifest.getMainAttributes().putValue(Constants.Manifest.MAPPING_NAMESPACE, getParameters().getTargetNamespace().get());
+				if (!getParameters().getPlatform().get().isForgeLike()) {
+					getParameters().getJarManifestService().get().apply(manifest, getParameters().getManifestAttributes().get());
+					manifest.getMainAttributes().putValue(Constants.Manifest.MAPPING_NAMESPACE, getParameters().getTargetNamespace().get());
+				}
 
 				ByteArrayOutputStream out = new ByteArrayOutputStream();
 				manifest.write(out);

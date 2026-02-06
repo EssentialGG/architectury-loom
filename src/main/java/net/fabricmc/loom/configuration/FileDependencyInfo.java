@@ -117,6 +117,27 @@ public class FileDependencyInfo extends DependencyInfo {
 					}
 
 					version = json.get("version").getAsString();
+				} else if ("jar".equals(getExtension(root)) && (modJson = ZipUtils.unpackNullable(root.toPath(), "quilt.mod.json")) != null) {
+					//It's a Fabric mod, see how much we can extract out
+					JsonObject json = new Gson().fromJson(new String(modJson, StandardCharsets.UTF_8), JsonObject.class);
+
+					if (json == null || !json.has("quilt_loader")) {
+						throw new IllegalArgumentException("Invalid Quilt mod jar: " + root + " (malformed json: " + json + ')');
+					}
+
+					JsonObject loader = json.getAsJsonObject("quilt_loader");
+
+					if (!loader.has("id") || !loader.has("version")) {
+						throw new IllegalArgumentException("Invalid Quilt mod jar: " + root + " (malformed json: " + json + ')');
+					}
+
+					if (loader.has("metadata") && loader.get("metadata").getAsJsonObject().has("name")) { //Go for the name field if it's got one
+						name = loader.get("metadata").getAsJsonObject().get("name").getAsString();
+					} else {
+						name = loader.get("id").getAsString();
+					}
+
+					version = loader.get("version").getAsString();
 				} else {
 					//Not a Fabric mod, just have to make something up
 					name = removeExtension(root);

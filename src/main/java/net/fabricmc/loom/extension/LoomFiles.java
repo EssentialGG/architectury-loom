@@ -50,4 +50,5 @@ public interface LoomFiles {
 	File getGlobalMinecraftRepo();
 	File getLocalMinecraftRepo();
 	File getDecompileCache(String version);
+	File getForgeDependencyRepo();
 }

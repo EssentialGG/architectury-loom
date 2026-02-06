@@ -36,11 +36,11 @@ import net.fabricmc.tinyremapper.NonClassCopyMode;
 import net.fabricmc.tinyremapper.OutputConsumerPath;
 import net.fabricmc.tinyremapper.TinyRemapper;
 
-public abstract sealed class SingleJarMinecraftProvider extends MinecraftProvider permits SingleJarMinecraftProvider.Server, SingleJarMinecraftProvider.Client {
+public abstract class SingleJarMinecraftProvider extends MinecraftProvider {
 	private final MappingsNamespace officialNamespace;
 	private Path minecraftEnvOnlyJar;
 
-	private SingleJarMinecraftProvider(MinecraftMetadataProvider metadataProvider, ConfigContext configContext, MappingsNamespace officialNamespace) {
+	protected SingleJarMinecraftProvider(MinecraftMetadataProvider metadataProvider, ConfigContext configContext, MappingsNamespace officialNamespace) {
 		super(metadataProvider, configContext);
 		this.officialNamespace = officialNamespace;
 	}
@@ -83,6 +83,10 @@ public abstract sealed class SingleJarMinecraftProvider extends MinecraftProvide
 			getProject().getLogger().warn("Using `clientOnlyMinecraftJar()` is not recommended for Minecraft versions 1.3 or newer.");
 		}
 
+		processJar();
+	}
+
+	protected void processJar() throws Exception {
 		boolean requiresRefresh = getExtension().refreshDeps() || Files.notExists(minecraftEnvOnlyJar);
 
 		if (!requiresRefresh) {
@@ -123,9 +127,9 @@ public abstract sealed class SingleJarMinecraftProvider extends MinecraftProvide
 		return officialNamespace;
 	}
 
-	abstract SingleJarEnvType type();
+	protected abstract SingleJarEnvType type();
 
-	abstract Path getInputJar(SingleJarMinecraftProvider provider) throws Exception;
+	protected abstract Path getInputJar(SingleJarMinecraftProvider provider) throws Exception;
 
 	public static final class Server extends SingleJarMinecraftProvider {
 		private Server(MinecraftMetadataProvider metadataProvider, ConfigContext configContext, MappingsNamespace officialNamespace) {

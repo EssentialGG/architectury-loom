@@ -45,13 +45,20 @@ import net.fabricmc.mappingio.adapter.MappingSourceNsSwitch;
 import net.fabricmc.mappingio.format.proguard.ProGuardFileReader;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
 
-public record MojangMappingLayer(Path clientMappings, Path serverMappings, boolean nameSyntheticMembers, boolean dropNoneIntermediaryRoots,
-									@Nullable Supplier<MemoryMappingTree> intermediarySupplier, Logger logger) implements MappingLayer {
+public record MojangMappingLayer(String minecraftVersion,
+									Path clientMappings,
+									Path serverMappings,
+									boolean nameSyntheticMembers,
+									boolean dropNoneIntermediaryRoots,
+									@Nullable Supplier<MemoryMappingTree> intermediarySupplier,
+									Logger logger,
+									MojangMappingsSpec.SilenceLicenseOption silenceLicense) implements MappingLayer {
 	private static final Pattern SYNTHETIC_NAME_PATTERN = Pattern.compile("^(access|this|val\\$this|lambda\\$.*)\\$[0-9]+$");
-
 	@Override
 	public void visit(MappingVisitor mappingVisitor) throws IOException {
-		printMappingsLicense(clientMappings);
+		if (!silenceLicense.isSilent()) {
+			printMappingsLicense(clientMappings);
+		}
 
 		if (!dropNoneIntermediaryRoots) {
 			logger().debug("Not attempting to drop none intermediary roots");

@@ -44,14 +44,19 @@ public record LoomDependencyManager(Project project, ServiceFactory serviceFacto
 		LoomGradleExtension extension = LoomGradleExtension.get(project);
 
 		SourceRemapper sourceRemapper = new SourceRemapper(project, serviceFactory, true);
-		String mappingsIdentifier = extension.getMappingConfiguration().mappingsIdentifier();
+		String platformSuffix = extension.isForgeLike() ? "_forge" : extension.isQuilt() ? "_arch_quilt" : "";
+		String mappingsIdentifier = extension.getMappingConfiguration().mappingsIdentifier() + platformSuffix;
 
 		ModConfigurationRemapper.supplyModConfigurations(project, serviceFactory, mappingsIdentifier, extension, sourceRemapper);
 
 		sourceRemapper.remapAll();
 
-		if (extension.getInstallerData() == null) {
-			project.getLogger().info("fabric-installer.json not found in dependencies");
+		if (extension.getInstallerData() == null && !extension.isForgeLike()) {
+			if (extension.isQuilt()) {
+				project.getLogger().info("quilt_installer.json not found in dependencies!");
+			} else {
+				project.getLogger().info("fabric-installer.json not found in dependencies!");
+			}
 		}
 	}
 

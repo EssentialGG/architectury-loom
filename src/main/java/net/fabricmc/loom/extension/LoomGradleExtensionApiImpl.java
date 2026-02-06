@@ -25,10 +25,15 @@
 package net.fabricmc.loom.extension;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectContainer;
@@ -49,10 +54,12 @@ import org.gradle.api.tasks.TaskProvider;
 import org.gradle.jvm.tasks.Jar;
 
 import net.fabricmc.loom.LoomGradleExtension;
+import net.fabricmc.loom.api.ForgeExtensionAPI;
 import net.fabricmc.loom.api.InterfaceInjectionExtensionAPI;
 import net.fabricmc.loom.api.LoomGradleExtensionAPI;
 import net.fabricmc.loom.api.MixinExtensionAPI;
 import net.fabricmc.loom.api.ModSettings;
+import net.fabricmc.loom.api.NeoForgeExtensionAPI;
 import net.fabricmc.loom.api.RemapConfigurationSettings;
 import net.fabricmc.loom.api.decompilers.DecompilerOptions;
 import net.fabricmc.loom.api.mappings.intermediate.IntermediateMappingsProvider;
@@ -62,6 +69,7 @@ import net.fabricmc.loom.api.processor.MinecraftJarProcessor;
 import net.fabricmc.loom.api.remapping.RemapperExtension;
 import net.fabricmc.loom.api.remapping.RemapperParameters;
 import net.fabricmc.loom.configuration.RemapConfigurations;
+import net.fabricmc.loom.configuration.ide.RunConfig;
 import net.fabricmc.loom.configuration.ide.RunConfigSettings;
 import net.fabricmc.loom.configuration.processors.JarProcessor;
 import net.fabricmc.loom.configuration.providers.mappings.LayeredMappingSpec;
@@ -73,15 +81,21 @@ import net.fabricmc.loom.configuration.providers.minecraft.MinecraftMetadataProv
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftSourceSets;
 import net.fabricmc.loom.task.GenerateSourcesTask;
 import net.fabricmc.loom.util.DeprecationHelper;
+import net.fabricmc.loom.util.Lazy;
 import net.fabricmc.loom.util.MirrorUtil;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.fmj.FabricModJson;
 import net.fabricmc.loom.util.fmj.FabricModJsonHelpers;
+import net.fabricmc.loom.util.gradle.GradleUtils;
 import net.fabricmc.loom.util.gradle.SourceSetHelper;
 
 /**
  * This class implements the public extension api.
  */
 public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionAPI {
+	private static final String FORGE_PROPERTY = "loom.forge";
+	private static final String PLATFORM_PROPERTY = "loom.platform";
+
 	protected final DeprecationHelper deprecationHelper;
 	@Deprecated()
 	protected final ListProperty<JarProcessor> jarProcessors;
@@ -115,6 +129,15 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 	protected boolean hasEvaluatedLayeredMappings = false;
 	protected final Map<LayeredMappingSpec, LayeredMappingsFactory> layeredMappingsDependencyMap = new HashMap<>();
 
+	// ===================
+	//  Architectury Loom
+	// ===================
+	private Provider<ModPlatform> platform;
+	private final Property<Boolean> silentMojangMappingsLicense;
+	public Boolean generateSrgTiny = null;
+	private final List<String> tasksBeforeRun = Collections.synchronizedList(new ArrayList<>());
+	public final List<Consumer<RunConfig>> settingsPostEdit = new ArrayList<>();
+
 	protected LoomGradleExtensionApiImpl(Project project, LoomFiles directories) {
 		this.jarProcessors = project.getObjects().listProperty(JarProcessor.class)
 				.empty();
@@ -135,7 +158,7 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 				.convention(true);
 		this.transitiveAccessWideners.finalizeValueOnRead();
 		this.modProvidedJavadoc = project.getObjects().property(Boolean.class)
-				.convention(true);
+				.convention(project.provider(() -> !isForgeLike()));
 		this.modProvidedJavadoc.finalizeValueOnRead();
 		this.intermediary = project.getObjects().property(String.class)
 				.convention(DEFAULT_INTERMEDIARY_URL);
@@ -196,6 +219,30 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 		interfaceInjection(interfaceInjection -> {
 			interfaceInjection.getEnableDependencyInterfaceInjection().convention(true).finalizeValueOnRead();
 		});
+		this.platform = project.provider(Lazy.of(() -> {
+			Object platformProperty = GradleUtils.getProperty(project, PLATFORM_PROPERTY);
+
+			if (platformProperty != null) {
+				ModPlatform platform = ModPlatform.valueOf(Objects.toString(platformProperty).toUpperCase(Locale.ROOT));
+
+				if (platform.isExperimental()) {
+					project.getLogger().lifecycle("{} support is experimental. Please report any issues!", platform.displayName());
+				}
+
+				return platform;
+			}
+
+			Object forgeProperty = GradleUtils.getProperty(project, FORGE_PROPERTY);
+
+			if (forgeProperty != null) {
+				project.getLogger().warn("Project " + project.getPath() + " is using property " + FORGE_PROPERTY + " to enable forge mode. Please use '" + PLATFORM_PROPERTY + " = forge' instead!");
+				return Boolean.parseBoolean(Objects.toString(forgeProperty)) ? ModPlatform.FORGE : ModPlatform.FABRIC;
+			}
+
+			return ModPlatform.FABRIC;
+		})::get);
+		this.silentMojangMappingsLicense = project.getObjects().property(Boolean.class).convention(false);
+		this.silentMojangMappingsLicense.finalizeValueOnRead();
 	}
 
 	@Override
@@ -261,7 +308,7 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 			throw new IllegalStateException("Layered mappings have already been evaluated");
 		}
 
-		LayeredMappingSpecBuilderImpl builder = new LayeredMappingSpecBuilderImpl();
+		LayeredMappingSpecBuilderImpl builder = new LayeredMappingSpecBuilderImpl(this);
 
 		layeredSpecBuilderScope.set(true);
 		action.execute(builder);
@@ -514,6 +561,67 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 		return LoomGradleExtension.get(getProject()).disableObfuscation();
 	}
 
+	@Override
+	public void silentMojangMappingsLicense() {
+		try {
+			this.silentMojangMappingsLicense.set(true);
+		} catch (IllegalStateException e) {
+			throw new IllegalStateException("loom.silentMojangMappingsLicense() must be called before its value is read, usually with loom.layered {}.", e);
+		}
+	}
+
+	@Override
+	public boolean isSilentMojangMappingsLicenseEnabled() {
+		return silentMojangMappingsLicense.get();
+	}
+
+	@Override
+	public Provider<ModPlatform> getPlatform() {
+		return platform;
+	}
+
+	@Override
+	public void setGenerateSrgTiny(Boolean generateSrgTiny) {
+		if (isNeoForge()) {
+			// This is unsupported because supporting the full 2x2 combination of
+			//  [no extra NS] [SRG]
+			//  [mojang]      [SRG+mojang]
+			// is a bit verbose to support.
+			throw new UnsupportedOperationException("SRG is not supported on NeoForge.");
+		}
+
+		this.generateSrgTiny = generateSrgTiny;
+	}
+
+	@Override
+	public boolean shouldGenerateSrgTiny() {
+		if (generateSrgTiny != null) {
+			return generateSrgTiny;
+		}
+
+		return isForge();
+	}
+
+	@Override
+	public List<String> getTasksBeforeRun() {
+		return tasksBeforeRun;
+	}
+
+	@Override
+	public List<Consumer<RunConfig>> getSettingsPostEdit() {
+		return settingsPostEdit;
+	}
+
+	@Override
+	public void forge(Action<ForgeExtensionAPI> action) {
+		action.execute(getForge());
+	}
+
+	@Override
+	public void neoForge(Action<NeoForgeExtensionAPI> action) {
+		action.execute(getNeoForge());
+	}
+
 	// This is here to ensure that LoomGradleExtensionApiImpl compiles without any unimplemented methods
 	private final class EnsureCompile extends LoomGradleExtensionApiImpl {
 		private EnsureCompile() {
@@ -548,6 +656,16 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 
 		@Override
 		public void nestJars(TaskProvider<? extends Jar> jarTask, FileCollection jars) {
+			throw new RuntimeException("Yeah... something is really wrong");
+		}
+
+		@Override
+		public ForgeExtensionAPI getForge() {
+			throw new RuntimeException("Yeah... something is really wrong");
+		}
+
+		@Override
+		public NeoForgeExtensionAPI getNeoForge() {
 			throw new RuntimeException("Yeah... something is really wrong");
 		}
 	}

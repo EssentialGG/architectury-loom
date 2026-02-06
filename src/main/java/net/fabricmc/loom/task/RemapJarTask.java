@@ -25,25 +25,37 @@
 package net.fabricmc.loom.task;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Stream;
 
 import javax.inject.Inject;
 
+import blue.endless.jankson.Jankson;
+import blue.endless.jankson.JsonElement;
+import blue.endless.jankson.JsonGrammar;
+import blue.endless.jankson.api.SyntaxError;
 import com.google.gson.JsonObject;
+import dev.architectury.loom.extensions.ModBuildExtensions;
+import dev.architectury.loom.metadata.QuiltModJson;
 import org.gradle.api.artifacts.ConfigurationContainer;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
+import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.plugins.JavaPlugin;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
+import org.gradle.api.provider.SetProperty;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskProvider;
 import org.jetbrains.annotations.ApiStatus;
@@ -60,9 +72,13 @@ import net.fabricmc.loom.build.nesting.NestableJarGenerationTask;
 import net.fabricmc.loom.configuration.accesswidener.AccessWidenerFile;
 import net.fabricmc.loom.configuration.mods.ArtifactMetadata;
 import net.fabricmc.loom.task.service.ClientEntriesService;
+import net.fabricmc.loom.task.service.MappingsService;
 import net.fabricmc.loom.task.service.MixinRefmapService;
 import net.fabricmc.loom.task.service.TinyRemapperService;
 import net.fabricmc.loom.util.Constants;
+import net.fabricmc.loom.util.ExceptionUtil;
+import net.fabricmc.loom.util.FileSystemUtil;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.Pair;
 import net.fabricmc.loom.util.SidedClassVisitor;
 import net.fabricmc.loom.util.ZipUtils;
@@ -88,6 +104,44 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 	@Input
 	public abstract Property<Boolean> getOptimizeFabricModJson();
 
+	/**
+	 * Gets the jar paths to the access wideners that will be converted to ATs for Forge runtime.
+	 * If you specify multiple files, they will be merged into one.
+	 *
+	 * <p>The specified files will be converted and removed from the final jar.
+	 *
+	 * @return the property containing access widener paths in the final jar
+	 */
+	@Input
+	public abstract SetProperty<String> getAtAccessWideners();
+
+	/**
+	 * Configures whether to read mixin configs from jar manifest
+	 * if a fabric.mod.json cannot be found.
+	 *
+	 * <p>This is enabled by default on Forge, but not on other platforms.
+	 *
+	 * @return the property
+	 */
+	@Input
+	public abstract Property<Boolean> getReadMixinConfigsFromManifest();
+
+	/**
+	 * Sets the "accessWidener" property in the fabric.mod.json, if the project is
+	 * using access wideners.
+	 *
+	 * @return the property
+	 */
+	@Input
+	public abstract Property<Boolean> getInjectAccessWidener();
+
+	/**
+	 * The path of the access widener to inject if {@link #getInjectAccessWidener() injectAccessWidener} is enabled.
+	 */
+	@InputFile
+	@Optional
+	public abstract RegularFileProperty getInjectedAccessWidenerPath();
+
 	@Input
 	@ApiStatus.Internal
 	public abstract Property<Boolean> getUseMixinAP();
@@ -103,6 +157,8 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 		getClasspath().from(configurations.getByName(JavaPlugin.COMPILE_CLASSPATH_CONFIGURATION_NAME));
 		getAddNestedDependencies().convention(true).finalizeValueOnRead();
 		getOptimizeFabricModJson().convention(false).finalizeValueOnRead();
+		getReadMixinConfigsFromManifest().convention(LoomGradleExtension.get(getProject()).isForgeLike()).finalizeValueOnRead();
+		getInjectAccessWidener().convention(false);
 
 		TaskProvider<NestableJarGenerationTask> processIncludeJars = getProject().getTasks().named(Constants.Task.PROCESS_INCLUDE_JARS, NestableJarGenerationTask.class);
 		getNestedJars().from(processIncludeJars.map(task -> getProject().fileTree(task.getOutputDirectory())));
@@ -118,6 +174,8 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 
 		getTinyRemapperServiceOptions().set(TinyRemapperService.createOptions(this));
 		getMixinRefmapServiceOptions().set(MixinRefmapService.createOptions(this));
+
+		getInjectedAccessWidenerPath().convention(LoomGradleExtension.get(getProject()).getAccessWidenerPath());
 	}
 
 	@Override
@@ -143,7 +201,16 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 				// or if the refmap should be remapped by mixin at runtime.
 				final var refmapRemapType = mixinAp ? ArtifactMetadata.MixinRemapType.MIXIN : ArtifactMetadata.MixinRemapType.STATIC;
 				params.getManifestAttributes().put(Constants.Manifest.MIXIN_REMAP_TYPE, refmapRemapType.manifestValue());
+			} else if (getModPlatform().get() == ModPlatform.FORGE) {
+				throw new RuntimeException("Forge must have useLegacyMixinAp enabled");
 			}
+
+			if (getInjectAccessWidener().get() && getInjectedAccessWidenerPath().isPresent()) {
+				params.getInjectAccessWidener().set(getInjectedAccessWidenerPath());
+			}
+
+			params.getReadMixinConfigsFromManifest().set(getReadMixinConfigsFromManifest());
+			params.getAtAccessWideners().set(getAtAccessWideners());
 
 			params.getOptimizeFmj().set(getOptimizeFabricModJson().get());
 		});
@@ -151,7 +218,12 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 
 	public interface RemapParams extends AbstractRemapParams {
 		ConfigurableFileCollection getNestedJars();
+
 		ConfigurableFileCollection getRemapClasspath();
+
+		RegularFileProperty getInjectAccessWidener();
+		Property<Boolean> getReadMixinConfigsFromManifest();
+		SetProperty<String> getAtAccessWideners();
 
 		Property<Boolean> getUseMixinExtension();
 		Property<Boolean> getOptimizeFmj();
@@ -194,10 +266,25 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 					markClientOnlyClasses();
 				}
 
-				remapAccessWidener();
+				if (!injectAccessWidener()) {
+					remapAccessWidener();
+				}
+
+				modifyJarManifest(); // Arch: must be executed before refmaps are added for the MixinConfigs attr
 				addRefmaps(serviceFactory);
 				addNestedJars();
-				modifyJarManifest();
+
+				if (getParameters().getAtAccessWideners().isPresent()) {
+					final Provider<MappingsService.Options> mappingsServiceOptions = getParameters().getTinyRemapperServiceOptions()
+							.flatMap(TinyRemapperService.Options::getMappings)
+							.map(mappingsOptions -> mappingsOptions.get(0));
+					ModBuildExtensions.convertAwToAt(serviceFactory, getParameters().getAtAccessWideners().get(), outputFile, mappingsServiceOptions);
+				}
+
+				if (getParameters().getPlatform().get() == ModPlatform.QUILT) {
+					convertQmj5();
+				}
+
 				rewriteJar();
 
 				if (getParameters().getOptimizeFmj().get()) {
@@ -238,6 +325,31 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 					));
 
 			ZipUtils.transform(outputFile, tranformers);
+		}
+
+		private boolean injectAccessWidener() throws IOException {
+			if (!getParameters().getInjectAccessWidener().isPresent()) return false;
+
+			Path path = getParameters().getInjectAccessWidener().getAsFile().get().toPath();
+
+			byte[] remapped = remapAccessWidener(Files.readAllBytes(path));
+
+			ZipUtils.add(outputFile, path.getFileName().toString(), remapped);
+
+			if (getParameters().getPlatform().get() == ModPlatform.QUILT) {
+				ZipUtils.transformJson(JsonObject.class, outputFile, Map.of("quilt.mod.json", json -> {
+					json.addProperty("access_widener", path.getFileName().toString());
+					return json;
+				}));
+				return true;
+			}
+
+			ZipUtils.transformJson(JsonObject.class, outputFile, Map.of("fabric.mod.json", json -> {
+				json.addProperty("accessWidener", path.getFileName().toString());
+				return json;
+			}));
+
+			return true;
 		}
 
 		private void remapAccessWidener() throws IOException {
@@ -283,7 +395,7 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 				return;
 			}
 
-			JarNester.nestJars(nestedJars.getFiles(), outputFile.toFile(), LOGGER);
+			JarNester.nestJars(nestedJars.getFiles(), outputFile.toFile(), getParameters().getPlatform().get(), LOGGER);
 		}
 
 		private void addRefmaps(ServiceFactory serviceFactory) throws IOException {
@@ -293,7 +405,7 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 
 			for (MixinRefmapService.Options options : getParameters().getMixinRefmapServiceOptions().get()) {
 				MixinRefmapService mixinRefmapService = serviceFactory.get(options);
-				mixinRefmapService.applyToJar(outputFile);
+				mixinRefmapService.applyToJar(outputFile, getParameters().getReadMixinConfigsFromManifest().get());
 			}
 		}
 
@@ -303,6 +415,31 @@ public abstract class RemapJarTask extends AbstractRemapJarTask {
 			}
 
 			ZipUtils.transformJson(JsonObject.class, outputFile, FabricModJsonFactory.FABRIC_MOD_JSON, FabricModJsonUtils::optimizeFmj);
+		}
+
+		private void convertQmj5() throws IOException {
+			byte[] bytes = ZipUtils.unpackNullable(outputFile, QuiltModJson.JSON5_FILE_NAME);
+			if (bytes == null) return;
+
+			if (ZipUtils.contains(outputFile, QuiltModJson.FILE_NAME)) {
+				throw new IllegalStateException("Output file contains both quilt.mod.json and quilt.mod.json5");
+			}
+
+			Jankson jankson = Jankson.builder().build();
+			JsonElement json;
+
+			try {
+				json = jankson.fromJson(new String(bytes, StandardCharsets.UTF_8), JsonElement.class);
+			} catch (SyntaxError e) {
+				throw ExceptionUtil.createDescriptiveWrapper(RuntimeException::new, "Could not read quilt.mod.json5", e);
+			}
+
+			String qmj = json.toJson(JsonGrammar.STRICT);
+
+			try (FileSystemUtil.Delegate fs = FileSystemUtil.getJarFileSystem(outputFile, false)) {
+				Files.delete(fs.getPath(QuiltModJson.JSON5_FILE_NAME));
+				Files.writeString(fs.getPath(QuiltModJson.FILE_NAME), qmj, StandardCharsets.UTF_8);
+			}
 		}
 	}
 

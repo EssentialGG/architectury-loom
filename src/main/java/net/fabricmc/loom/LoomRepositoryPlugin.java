@@ -24,6 +24,8 @@
 
 package net.fabricmc.loom;
 
+import java.util.List;
+
 import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.ArtifactRepositoryContainer;
@@ -40,6 +42,14 @@ import net.fabricmc.loom.extension.LoomFiles;
 import net.fabricmc.loom.util.MirrorUtil;
 
 public class LoomRepositoryPlugin implements Plugin<PluginAware> {
+	private static final List<String> FORGE_GROUPS = List.of(
+			"net.minecraftforge",
+			"cpw.mods",
+			"de.oceanlabs",
+			"net.jodah",
+			"org.mcmodlauncher"
+	);
+
 	@Override
 	public void apply(@NotNull PluginAware target) {
 		if (target instanceof Settings settings) {
@@ -64,6 +74,13 @@ public class LoomRepositoryPlugin implements Plugin<PluginAware> {
 		declareLocalRepositories(repositories, files);
 
 		repositories.maven(repo -> {
+			repo.setName("Architectury");
+			repo.setUrl("https://maven.architectury.dev/");
+			repo.mavenContent(content -> {
+				content.includeGroup("dev.architectury");
+			});
+		});
+		repositories.maven(repo -> {
 			repo.setName("Fabric");
 			repo.setUrl(MirrorUtil.getFabricRepository(target));
 		});
@@ -82,6 +99,22 @@ public class LoomRepositoryPlugin implements Plugin<PluginAware> {
 			// Fallback to maven central for artifacts such as sources or javadocs that are not mirrored on Mojang's repo.
 			// See: https://github.com/FabricMC/fabric-loom/issues/1032
 			repo.artifactUrls(ArtifactRepositoryContainer.MAVEN_CENTRAL_URL);
+		});
+		repositories.maven(repo -> {
+			repo.setName("Forge");
+			repo.setUrl("https://maven.minecraftforge.net/");
+
+			repo.content(descriptor -> {
+				// Only include these groups to avoid slowing down/hanging the build,
+				// or downloading incorrect artifacts.
+				for (String group : FORGE_GROUPS) {
+					descriptor.includeGroupAndSubgroups(group);
+				}
+			});
+			repo.metadataSources(sources -> {
+				sources.mavenPom();
+				sources.ignoreGradleMetadataRedirection();
+			});
 		});
 
 		// If a mavenCentral repo is already defined, remove the mojang repo and add it back before the mavenCentral repo so that it will be checked first.
@@ -110,6 +143,11 @@ public class LoomRepositoryPlugin implements Plugin<PluginAware> {
 		repositories.maven(repo -> {
 			repo.setName("LoomLocalMinecraft");
 			repo.setUrl(files.getLocalMinecraftRepo());
+		});
+
+		repositories.maven(repo -> {
+			repo.setName("LoomTransformedForgeDependencies");
+			repo.setUrl(files.getForgeDependencyRepo());
 		});
 	}
 

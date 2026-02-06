@@ -1,0 +1,23 @@
+plugins {
+	id 'gg.essential.loom'
+}
+
+base {
+	archivesName = project.archives_base_name
+}
+
+version = project.mod_version
+group = project.maven_group
+
+loom {
+	forge {
+		useForgeLoggerConfig = true
+	}
+}
+
+dependencies {
+	// To change the versions see the gradle.properties file
+	minecraft "com.mojang:minecraft:$project.minecraft_version"
+	mappings loom.officialMojangMappings()
+	forge "net.minecraftforge:forge:$project.minecraft_version-$project.forge_version"
+}

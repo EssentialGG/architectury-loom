@@ -26,6 +26,7 @@ package net.fabricmc.loom.configuration.providers.minecraft;
 
 import java.util.List;
 
+import dev.architectury.loom.forge.minecraft.ForgeMinecraftProvider;
 import org.gradle.api.Project;
 
 import net.fabricmc.loom.LoomGradleExtension;
@@ -36,8 +37,10 @@ import net.fabricmc.loom.configuration.decompile.SplitDecompileConfiguration;
 import net.fabricmc.loom.configuration.processors.MinecraftJarProcessorManager;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.IntermediaryMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.MappedMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.MojangMappedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.NamedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.ProcessedNamedMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.SrgMinecraftProvider;
 
 public record MinecraftJarConfiguration<
 		M extends MinecraftProvider,
@@ -46,6 +49,8 @@ public record MinecraftJarConfiguration<
 				MinecraftProviderFactory<M> minecraftProviderFactory,
 				IntermediaryMinecraftProviderFactory<M> intermediaryMinecraftProviderFactory,
 				NamedMinecraftProviderFactory<M> namedMinecraftProviderFactory,
+				SrgMinecraftProviderFactory<M> srgMinecraftProviderFactory,
+				MojangMappedMinecraftProviderFactory<M> mojangMappedMinecraftProviderFactory,
 				ProcessedNamedMinecraftProviderFactory<M, N> processedNamedMinecraftProviderFactory,
 				DecompileConfigurationFactory<Q> decompileConfigurationFactory,
 				List<String> supportedEnvironments) {
@@ -53,9 +58,11 @@ public record MinecraftJarConfiguration<
 			MergedMinecraftProvider,
 			NamedMinecraftProvider.MergedImpl,
 			MappedMinecraftProvider> MERGED = new MinecraftJarConfiguration<>(
-				MergedMinecraftProvider::new,
+				ForgeMinecraftProvider::createMerged,
 				IntermediaryMinecraftProvider.MergedImpl::new,
 				NamedMinecraftProvider.MergedImpl::new,
+				SrgMinecraftProvider.MergedImpl::new,
+				MojangMappedMinecraftProvider.MergedImpl::new,
 				ProcessedNamedMinecraftProvider.MergedImpl::new,
 				SingleJarDecompileConfiguration::new,
 				List.of("client", "server")
@@ -67,6 +74,8 @@ public record MinecraftJarConfiguration<
 				LegacyMergedMinecraftProvider::new,
 				IntermediaryMinecraftProvider.LegacyMergedImpl::new,
 				NamedMinecraftProvider.LegacyMergedImpl::new,
+			SrgMinecraftProvider.LegacyMergedImpl::new,
+			MojangMappedMinecraftProvider.LegacyMergedImpl::new,
 				ProcessedNamedMinecraftProvider.LegacyMergedImpl::new,
 				SingleJarDecompileConfiguration::new,
 				List.of("client", "server")
@@ -75,9 +84,11 @@ public record MinecraftJarConfiguration<
 			SingleJarMinecraftProvider,
 			NamedMinecraftProvider.SingleJarImpl,
 			MappedMinecraftProvider> SERVER_ONLY = new MinecraftJarConfiguration<>(
-				SingleJarMinecraftProvider::server,
+				ForgeMinecraftProvider::createServerOnly,
 				IntermediaryMinecraftProvider.SingleJarImpl::server,
 				NamedMinecraftProvider.SingleJarImpl::server,
+				SrgMinecraftProvider.SingleJarImpl::server,
+				MojangMappedMinecraftProvider.SingleJarImpl::server,
 				ProcessedNamedMinecraftProvider.SingleJarImpl::server,
 				SingleJarDecompileConfiguration::new,
 				List.of("server")
@@ -86,9 +97,11 @@ public record MinecraftJarConfiguration<
 			SingleJarMinecraftProvider,
 			NamedMinecraftProvider.SingleJarImpl,
 			MappedMinecraftProvider> CLIENT_ONLY = new MinecraftJarConfiguration<>(
-				SingleJarMinecraftProvider::client,
+				ForgeMinecraftProvider::createClientOnly,
 				IntermediaryMinecraftProvider.SingleJarImpl::client,
 				NamedMinecraftProvider.SingleJarImpl::client,
+				SrgMinecraftProvider.SingleJarImpl::client,
+				MojangMappedMinecraftProvider.SingleJarImpl::client,
 				ProcessedNamedMinecraftProvider.SingleJarImpl::client,
 				SingleJarDecompileConfiguration::new,
 				List.of("client")
@@ -100,6 +113,8 @@ public record MinecraftJarConfiguration<
 				SplitMinecraftProvider::new,
 				IntermediaryMinecraftProvider.SplitImpl::new,
 				NamedMinecraftProvider.SplitImpl::new,
+				SrgMinecraftProvider.SplitImpl::new,
+				MojangMappedMinecraftProvider.SplitImpl::new,
 				ProcessedNamedMinecraftProvider.SplitImpl::new,
 				SplitDecompileConfiguration::new,
 				List.of("client", "server")
@@ -115,6 +130,14 @@ public record MinecraftJarConfiguration<
 
 	public NamedMinecraftProvider<M> createNamedMinecraftProvider(Project project) {
 		return namedMinecraftProviderFactory.create(project, getMinecraftProvider(project));
+	}
+
+	public SrgMinecraftProvider<M> createSrgMinecraftProvider(Project project) {
+		return srgMinecraftProviderFactory.create(project, getMinecraftProvider(project));
+	}
+
+	public MojangMappedMinecraftProvider<M> createMojangMappedMinecraftProvider(Project project) {
+		return mojangMappedMinecraftProviderFactory.create(project, getMinecraftProvider(project));
 	}
 
 	public ProcessedNamedMinecraftProvider<M, N> createProcessedNamedMinecraftProvider(NamedMinecraftProvider<?> namedMinecraftProvider, MinecraftJarProcessorManager jarProcessorManager) {
@@ -137,6 +160,10 @@ public record MinecraftJarConfiguration<
 		return (Q) extension.getNamedMinecraftProvider();
 	}
 
+	public List<String> getSupportedEnvironments() {
+		return supportedEnvironments;
+	}
+
 	// Factory interfaces:
 	private interface MinecraftProviderFactory<M extends MinecraftProvider> {
 		M create(MinecraftMetadataProvider metadataProvider, ConfigContext configContext);
@@ -148,6 +175,14 @@ public record MinecraftJarConfiguration<
 
 	private interface NamedMinecraftProviderFactory<M extends MinecraftProvider> {
 		NamedMinecraftProvider<M> create(Project project, M minecraftProvider);
+	}
+
+	private interface SrgMinecraftProviderFactory<M extends MinecraftProvider> {
+		SrgMinecraftProvider<M> create(Project project, M minecraftProvider);
+	}
+
+	private interface MojangMappedMinecraftProviderFactory<M extends MinecraftProvider> {
+		MojangMappedMinecraftProvider<M> create(Project project, M minecraftProvider);
 	}
 
 	private interface ProcessedNamedMinecraftProviderFactory<M extends MinecraftProvider, N extends NamedMinecraftProvider<M>> {

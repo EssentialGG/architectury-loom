@@ -38,6 +38,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import com.google.gson.JsonElement;
@@ -71,10 +72,12 @@ public class RunConfig {
 	public String environment;
 	public List<String> vmArgs = new ArrayList<>();
 	public List<String> programArgs = new ArrayList<>();
+	public List<String> vscodeBeforeRun = new ArrayList<>();
 	public transient SourceSet sourceSet;
 	public Map<String, Object> environmentVariables;
 	public String projectName;
 	public String folderName;
+	public String name;
 
 	// Turns camelCase/PascalCase into Capital Case
 	// caseConversionExample -> Case Conversion Example
@@ -87,6 +90,7 @@ public class RunConfig {
 	}
 
 	public static RunConfig runConfig(Project project, RunConfigSettings settings) {
+		settings.evaluateNow();
 		LoomGradleExtension extension = LoomGradleExtension.get(project);
 		LibraryContext context = new LibraryContext(extension.getMinecraftProvider().getVersionInfo(), JavaVersion.current());
 
@@ -132,6 +136,7 @@ public class RunConfig {
 		boolean appendProjectPath = settings.getAppendProjectPathToConfigName().get();
 		RunConfig runConfig = new RunConfig();
 		runConfig.configName = configName;
+		runConfig.name = name;
 
 		if (appendProjectPath && !GradleUtils.isRootProject(project)) {
 			runConfig.configName += " (" + project.getPath() + ")";
@@ -155,6 +160,10 @@ public class RunConfig {
 		runConfig.environmentVariables.putAll(settings.getEnvironmentVariables());
 		runConfig.projectName = project.getName();
 		runConfig.folderName = settings.getIdeConfigFolder().getOrNull();
+
+		for (Consumer<RunConfig> consumer : extension.getSettingsPostEdit()) {
+			consumer.accept(runConfig);
+		}
 
 		return runConfig;
 	}
@@ -219,7 +228,7 @@ public class RunConfig {
 	}
 
 	static String getMainClass(String side, LoomGradleExtension extension, String defaultMainClass) {
-		InstallerData installerData = extension.getInstallerData();
+		InstallerData installerData = extension.getInstallerData() == null ? null : extension.getInstallerData();
 
 		if (installerData == null) {
 			return defaultMainClass;

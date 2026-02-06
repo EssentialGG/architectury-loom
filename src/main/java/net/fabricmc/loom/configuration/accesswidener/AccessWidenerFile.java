@@ -30,9 +30,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.Set;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import dev.architectury.loom.metadata.ModMetadataFile;
+import dev.architectury.loom.metadata.ModMetadataFiles;
+import dev.architectury.loom.util.collection.CollectionUtil;
 
 import net.fabricmc.loom.util.ZipUtils;
 
@@ -54,7 +58,42 @@ public record AccessWidenerFile(
 		}
 
 		if (modJsonBytes == null) {
-			return null;
+			ModMetadataFile modMetadata;
+			String awPath;
+
+			try {
+				modMetadata = ModMetadataFiles.fromJar(modJarPath);
+
+				if (modMetadata != null) {
+					final Set<String> accessWideners = modMetadata.getAccessWideners();
+
+					if (accessWideners.size() > 1) {
+						throw new UnsupportedOperationException("Cannot read multiple access wideners from " + modJarPath);
+					}
+
+					awPath = CollectionUtil.single(modMetadata.getAccessWideners()).orElse(null);
+					if (awPath == null) return null;
+				} else {
+					// No known mod metadata
+					return null;
+				}
+			} catch (IOException e) {
+				throw new UncheckedIOException("Could not read mod metadata from " + modJarPath.toAbsolutePath(), e);
+			}
+
+			byte[] content;
+
+			try {
+				content = ZipUtils.unpack(modJarPath, awPath);
+			} catch (IOException e) {
+				throw new UncheckedIOException("Could not find access widener file (%s) defined in the %s file of %s".formatted(awPath, modMetadata.getFileName(), modJarPath.toAbsolutePath()), e);
+			}
+
+			return new AccessWidenerFile(
+					awPath,
+					Objects.requireNonNullElseGet(modMetadata.getId(), () -> modJarPath.getFileName().toString()),
+					content
+			);
 		}
 
 		JsonObject jsonObject = new Gson().fromJson(new String(modJsonBytes, StandardCharsets.UTF_8), JsonObject.class);

@@ -1,0 +1,18 @@
+tsrg2 left right
+a test/FakeClass
+	<init> ()V <init>
+	a I f_1_
+	a ()I m_1_
+	evilUnobfMethod ()V m_3_
+	a (I)V m_5_
+b test/FakeSubclass
+	<init> ()V <init>
+	a ()I m_1_
+	evilUnobfMethod ()V m_3_
+test/DeObfClass test/DeObfClass
+	<init> ()V <init>
+	iAmNotObfuscated ()V m_2_
+c test/FormerSiblingA
+	a ()V m_4_
+d test/FormerSiblingB
+	a ()V m_4_

@@ -72,6 +72,8 @@ public interface LayeredMappingSpecBuilder {
 
 	LayeredMappingSpecBuilder parchment(Object object, Action<ParchmentMappingsSpecBuilder> action);
 
+	LayeredMappingSpecBuilder crane(Object object);
+
 	/**
 	 * Add a signatureFix layer. Reads the @extras/record_signatures.json" file in a jar file such as yarn.
 	 */

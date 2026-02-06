@@ -1,0 +1,16 @@
+test.FakeClass -> a:
+    void <init>() -> <init>
+    int fakeField -> a
+    int getFakeField() -> a
+    void evilUnobfMethod() -> evilUnobfMethod
+    void setFakeField(int) -> a
+test.FakeSubclass -> b:
+    void <init>() -> <init>
+    void evilUnobfMethod() -> evilUnobfMethod
+test.DeObfClass -> test.DeObfClass:
+    void <init>() -> <init>
+    void iAmNotObfuscated() -> iAmNotObfuscated
+test.FormerSiblingA -> c:
+    void something() -> a
+test.FormerSiblingB -> d:
+    void something() -> a

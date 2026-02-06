@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.jar.Manifest;
@@ -52,6 +53,8 @@ public record TinyJarInfo(boolean v2, Optional<String> minecraftVersionId) {
 	private static boolean doesJarContainV2Mappings(FileSystemUtil.Delegate fs) throws IOException {
 		try (BufferedReader reader = Files.newBufferedReader(fs.getPath("mappings", "mappings.tiny"))) {
 			return MappingReader.detectFormat(reader) == MappingFormat.TINY_2_FILE;
+		} catch (NoSuchFileException e) {
+			return false;
 		}
 	}
 

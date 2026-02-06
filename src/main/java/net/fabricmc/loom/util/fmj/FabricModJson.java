@@ -35,7 +35,7 @@ import com.google.gson.JsonObject;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
 
-public abstract sealed class FabricModJson permits FabricModJsonV0, FabricModJsonV1, FabricModJsonV2, FabricModJson.Mockable {
+public abstract sealed class FabricModJson permits FabricModJsonV0, FabricModJsonV1, FabricModJsonV2, ModMetadataFabricModJson, FabricModJson.Mockable {
 	protected final JsonObject jsonObject;
 	private final FabricModJsonSource source;
 

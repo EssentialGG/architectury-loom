@@ -26,33 +26,46 @@ package net.fabricmc.loom.task.launch;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
+import dev.architectury.loom.forge.config.ForgeRunTemplate;
+import dev.architectury.loom.forge.dependency.ForgeRunsProvider;
 import org.gradle.api.Project;
+import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.logging.configuration.ConsoleOutput;
 import org.gradle.api.provider.Property;
+import org.gradle.api.provider.SetProperty;
 import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
+import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.Nested;
 import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
+import org.jetbrains.annotations.ApiStatus;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.LoomGradlePlugin;
+import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftVersionMeta;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.MappedMinecraftProvider;
 import net.fabricmc.loom.task.AbstractLoomTask;
 import net.fabricmc.loom.task.service.ClasspathGroupService;
+import net.fabricmc.loom.util.Constants;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.service.ScopedServiceFactory;
 
 public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
@@ -98,6 +111,24 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 	@Nested
 	protected abstract Property<ClasspathGroupService.Options> getClasspathGroupOptions();
 
+	@ApiStatus.Internal
+	@Input
+	@Optional
+	protected abstract Property<ForgeInputs> getForgeInputs();
+
+	@ApiStatus.Internal
+	@InputFile
+	@Optional
+	protected abstract RegularFileProperty getPlatformMappingFile();
+
+	@ApiStatus.Internal
+	@InputFiles
+	protected abstract ConfigurableFileCollection getMappingJars();
+
+	@ApiStatus.Internal
+	@Input
+	protected abstract SetProperty<ForgeRunTemplate.Resolved> getRunTemplates();
+
 	public GenerateDLIConfigTask() {
 		getVersionInfoJson().set(LoomGradlePlugin.GSON.toJson(getExtension().getMinecraftProvider().getVersionInfo()));
 		getMinecraftVersion().set(getExtension().getMinecraftProvider().minecraftVersion());
@@ -116,6 +147,30 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 		getAssetsDirectoryPath().set(new File(getExtension().getFiles().getUserCache(), "assets").getAbsolutePath());
 		getNativesDirectoryPath().set(getExtension().getFiles().getNativesDirectory(getProject()).getAbsolutePath());
 		getDevLauncherConfig().set(getExtension().getFiles().getDevLauncherConfig());
+
+		getPlatformMappingFile().set(getProject().getLayout().file(getProject().provider(() ->
+				getExtension().disableObfuscation() ? null : getExtension().getPlatformMappingFile().toFile())));
+		getPlatformMappingFile().finalizeValue();
+
+		if (!getExtension().disableObfuscation()) {
+			getMappingJars().from(getProject().getConfigurations().getByName(Constants.Configurations.MAPPINGS_FINAL));
+		}
+
+		if (getExtension().isForgeLike()) {
+			getRunTemplates().addAll(getProject().provider(() -> {
+				final ForgeRunsProvider forgeRunsProvider = getExtension().getForgeRunsProvider();
+				return forgeRunsProvider.getTemplates()
+						.stream()
+						.map(template -> template.resolve(forgeRunsProvider))
+						.toList();
+			}));
+
+			if (getExtension().isForge()) {
+				getForgeInputs().set(getProject().provider(() -> new ForgeInputs(getProject(), getExtension())));
+			}
+		} else {
+			getRunTemplates().empty();
+		}
 	}
 
 	@TaskAction
@@ -127,15 +182,17 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 			assetsDirectory = new File(assetsDirectory, "/legacy/" + versionInfo.id());
 		}
 
+		final ModPlatform platform = getModPlatform().get();
+		boolean quilt = platform == ModPlatform.QUILT;
 		final LaunchConfig launchConfig = new LaunchConfig()
-				.property("fabric.development", "true")
+				.property(!quilt ? "fabric.development" : "loader.development", "true")
 				.property("log4j.configurationFile", getLog4jConfigPaths().get())
-				.property("log4j2.formatMsgNoLookups", "true")
+				.property("log4j2.formatMsgNoLookups", "true");
 
-				.argument("client", "--assetIndex")
-				.argument("client", versionInfo.assetIndex().fabricId(getMinecraftVersion().get()))
-				.argument("client", "--assetsDir")
-				.argument("client", assetsDirectory.getAbsolutePath());
+		if (getRemapClasspathFile().isPresent()) {
+			launchConfig
+					.property(!quilt ? "fabric.remapClasspathFile" : "loader.remapClasspathFile", getRemapClasspathFile().get().getAsFile().getAbsolutePath());
+		}
 
 		if (getRemapClasspathFile().isPresent()) {
 			launchConfig.property("fabric.remapClasspathFile", getRemapClasspathFile().get().getAsFile().getAbsolutePath());
@@ -149,16 +206,101 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 					.property("client", "org.lwjgl.librarypath", nativesPath);
 		}
 
-		if (getSplitSourceSets().get()) {
-			launchConfig.property("client", "fabric.gameJarPath.client", getClientGameJarPath().get());
-			launchConfig.property("fabric.gameJarPath", getCommonGameJarPath().get());
+		if (!platform.isForgeLike() || (platform == ModPlatform.FORGE && getForgeInputs().get().legacyForge())) {
+			launchConfig
+					.argument("client", "--assetIndex")
+					.argument("client", versionInfo.assetIndex().fabricId(getMinecraftVersion().get()))
+					.argument("client", "--assetsDir")
+					.argument("client", assetsDirectory.getAbsolutePath());
 		}
 
-		try (ScopedServiceFactory serviceFactory = new ScopedServiceFactory()) {
-			ClasspathGroupService classpathGroupService = serviceFactory.get(getClasspathGroupOptions());
+		if (!platform.isForgeLike()) {
+			if (getSplitSourceSets().get()) {
+				launchConfig.property("client", !quilt ? "fabric.gameJarPath.client" : "loader.gameJarPath.client", getClientGameJarPath().get());
+				launchConfig.property(!quilt ? "fabric.gameJarPath" : "loader.gameJarPath", getCommonGameJarPath().get());
+			}
 
-			if (classpathGroupService.hasGroups()) {
-				launchConfig.property("fabric.classPathGroups", classpathGroupService.getClasspathGroupsPropertyValue());
+			try (ScopedServiceFactory serviceFactory = new ScopedServiceFactory()) {
+				ClasspathGroupService classpathGroupService = serviceFactory.get(getClasspathGroupOptions());
+
+				if (classpathGroupService.hasGroups()) {
+					launchConfig.property(!quilt ? "fabric.classPathGroups" : "loader.classPathGroups", classpathGroupService.getClasspathGroupsPropertyValue());
+				}
+			}
+		}
+
+		if (quilt) {
+			launchConfig
+					.argument("client", "--version")
+					.argument("client", "Architectury Loom")
+					.property("loader.enable_quilt_mod_json5_in_dev_env", "true");
+		}
+
+		if (platform.isForgeLike()) {
+			// Find the mapping files for Unprotect to use for figuring out
+			// which classes are from Minecraft.
+			String unprotectMappings = getMappingJars()
+					.getFiles()
+					.stream()
+					.map(File::getAbsolutePath)
+					.collect(Collectors.joining(File.pathSeparator));
+
+			final String intermediateNs = IntermediaryNamespaces.intermediaryNamespace(platform).toString();
+			final String mappingsPath = getPlatformMappingFile().get().getAsFile().getAbsolutePath();
+
+			launchConfig
+					.property("unprotect.mappings", unprotectMappings)
+					// See ArchitecturyNamingService in forge-runtime
+					.property("architectury.naming.sourceNamespace", intermediateNs)
+					.property("architectury.naming.mappingsPath", mappingsPath);
+
+			if (platform == ModPlatform.FORGE) {
+				final ForgeInputs forgeInputs = Objects.requireNonNull(getForgeInputs().getOrNull());
+				final List<String> dataGenMods = forgeInputs.dataGenMods();
+
+				// Only apply the hardcoded data arguments if the deprecated data generator API is being used.
+				if (!dataGenMods.isEmpty()) {
+					launchConfig
+							.argument("data", "--all")
+							.argument("data", "--mod")
+							.argument("data", String.join(",", dataGenMods))
+							.argument("data", "--output")
+							.argument("data", forgeInputs.legacyDataGenDir());
+				}
+
+				launchConfig.property("mixin.env.remapRefMap", "true");
+
+				if (!forgeInputs.legacyForge() && forgeInputs.useCustomMixin()) {
+					// See mixin remapper service in forge-runtime
+					launchConfig
+							.property("architectury.mixinRemapper.sourceNamespace", intermediateNs)
+							.property("architectury.mixinRemapper.mappingsPath", mappingsPath);
+				} else {
+					launchConfig.property("net.minecraftforge.gradle.GradleStart.srg.srg-mcp", forgeInputs.srgToNamedSrg());
+				}
+
+				Set<String> mixinConfigs = forgeInputs.mixinConfigs();
+
+				if (!mixinConfigs.isEmpty()) {
+					for (String config : mixinConfigs) {
+						launchConfig.argument(forgeInputs.legacyForge() ? "--mixin" : "-mixin.config");
+						launchConfig.argument(config);
+					}
+				}
+			}
+
+			for (ForgeRunTemplate.Resolved template : getRunTemplates().get()) {
+				// Note: lowercase to match RunConfig which lowercases all user input for
+				// RunConfigSettings.environment
+				var env = template.name().toLowerCase(Locale.ROOT);
+
+				for (String argument : template.args()) {
+					launchConfig.argument(env, argument);
+				}
+
+				for (Map.Entry<String, String> property : template.props().entrySet()) {
+					launchConfig.property(env, property.getKey(), property.getValue());
+				}
 			}
 		}
 
@@ -195,7 +337,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 	}
 
 	public static class LaunchConfig {
-		private final Map<String, List<String>> values = new HashMap<>();
+		private final Map<String, List<String>> values = new LinkedHashMap<>();
 
 		public LaunchConfig property(String key, String value) {
 			return property("common", key, value);
@@ -229,6 +371,27 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 			}
 
 			return stringJoiner.toString();
+		}
+	}
+
+	@ApiStatus.Internal
+	public record ForgeInputs(
+			boolean legacyForge,
+			List<String> dataGenMods,
+			String legacyDataGenDir,
+			Set<String> mixinConfigs,
+			boolean useCustomMixin,
+			String srgToNamedSrg
+	) implements Serializable {
+		public ForgeInputs(Project project, LoomGradleExtension extension) {
+			this(
+					extension.isLegacyForge(),
+					extension.getForge().getDataGenMods(),
+					project.file("src/generated/resources").getAbsolutePath(),
+					extension.getForge().getMixinConfigs().get(),
+					extension.getForge().getUseCustomMixin().get(),
+					extension.getMappingConfiguration().srgToNamedSrg.toAbsolutePath().toString()
+			);
 		}
 	}
 }

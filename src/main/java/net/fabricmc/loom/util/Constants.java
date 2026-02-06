@@ -28,6 +28,9 @@ import org.jetbrains.annotations.ApiStatus;
 import org.objectweb.asm.Opcodes;
 
 public class Constants {
+	public static final String PLUGIN_ID = "gg.essential.loom";
+	public static final boolean PLUGIN_BETA = false;
+	public static final boolean PLUGIN_DEPRECATED = false;
 	public static final String LIBRARIES_BASE = "https://libraries.minecraft.net/";
 	public static final String RESOURCES_BASE = "https://resources.download.minecraft.net/";
 	public static final String VERSION_MANIFESTS = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
@@ -74,6 +77,30 @@ public class Constants {
 		public static final String MAPPINGS_FINAL = "mappingsFinal";
 		public static final String LOADER_DEPENDENCIES = "loaderLibraries";
 		public static final String LOOM_DEVELOPMENT_DEPENDENCIES = "loomDevelopmentDependencies";
+		public static final String SRG = "srg";
+		public static final String MCP_CONFIG = "mcp";
+		public static final String FORGE = "forge";
+		public static final String NEOFORGE = "neoForge";
+		public static final String FORGE_USERDEV = "forgeUserdev";
+		public static final String FORGE_INSTALLER = "forgeInstaller";
+		public static final String FORGE_UNIVERSAL = "forgeUniversal";
+		/**
+		 * Forge's own dependencies. Not intended to be used by users,
+		 * {@link #FORGE_RUNTIME_LIBRARY forgeRuntimeLibrary} is for that instead.
+		 */
+		public static final String FORGE_DEPENDENCIES = "forgeDependencies";
+		/**
+		 * "Extra" runtime dependencies on Forge. Contains the Minecraft resources
+		 * and {@linkplain Dependencies#FORGE_RUNTIME the Architectury Loom runtime}.
+		 */
+		public static final String FORGE_EXTRA = "forgeExtra";
+		/**
+		 * The configuration used to create the Forge runtime classpath file list.
+		 * Users can also directly add files to this config.
+		 *
+		 * @see dev.architectury.loom.forge.dependency.ForgeUserdevProvider
+		 */
+		public static final String FORGE_RUNTIME_LIBRARY = "forgeRuntimeLibrary";
 		public static final String MAPPING_CONSTANTS = "mappingsConstants";
 		/**
 		 * A configuration that behaves like {@code runtimeOnly} but is not
@@ -120,7 +147,7 @@ public class Constants {
 	}
 
 	public static final class TaskGroup {
-		public static final String FABRIC = "fabric";
+		public static final String FABRIC = "loom";
 		public static final String IDE = "ide";
 
 		private TaskGroup() {
@@ -167,6 +194,8 @@ public class Constants {
 		 * Set to true in all {@link net.fabricmc.loom.task.RenderDocRunTask} can be used to determine at runtime if running with loom's renderdoc setup.
 		 */
 		public static final String RENDER_DOC = "fabric.loom.renderdoc.enabled";
+		public static final String ALLOW_MISMATCHED_PLATFORM_VERSION = "loom.allowMismatchedPlatformVersion";
+		public static final String IGNORE_DEPENDENCY_LOOM_VERSION_VALIDATION = "loom.ignoreDependencyLoomVersionValidation";
 	}
 
 	public static final class Manifest {
@@ -188,5 +217,30 @@ public class Constants {
 		public static final String MIXIN_VERSION = "Fabric-Mixin-Version";
 		public static final String MIXIN_GROUP = "Fabric-Mixin-Group";
 		public static final String KNOWN_IDY_BSMS = "Fabric-Loom-Known-Indy-BSMS";
+	}
+
+	public static final class Forge {
+		public static final String UNDETERMINED_MAIN_CLASS = "[Forge] Main class has not been determined yet!";
+		public static final String ACCESS_TRANSFORMER_PATH = "META-INF/accesstransformer.cfg";
+		public static final String MIXIN_CONFIGS_MANIFEST_KEY = "MixinConfigs";
+
+		/**
+		 * The minimum Forge version that needs bootstrap-dev to use {@code MOD_CLASSES}.
+		 */
+		public static final int MIN_BOOTSTRAP_DEV_VERSION = 49;
+
+		/**
+		 * The minimum version of Forge that uses "mojang" as the namespace in production.
+		 */
+		public static final int MIN_USE_MOJANG_NS_VERSION = 50;
+
+		private Forge() {
+		}
+	}
+
+	public static final class LegacyForge {
+		public static final String LAUNCH_WRAPPER = "net.minecraft.launchwrapper.Launch";
+		public static final String FML_TWEAKER = "net.minecraftforge.fml.common.launcher.FMLTweaker";
+		public static final String FML_SERVER_TWEAKER = "net.minecraftforge.fml.common.launcher.FMLServerTweaker";
 	}
 }

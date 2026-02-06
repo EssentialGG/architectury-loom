@@ -39,8 +39,9 @@ import org.gradle.api.tasks.util.PatternSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.MixinExtensionAPI;
-import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
+import net.fabricmc.loom.build.IntermediaryNamespaces;
 
 public abstract class MixinExtensionApiImpl implements MixinExtensionAPI {
 	private static final String MIXIN_AP_DISABLED_ERROR = "The mixin annotation is no longer enabled by default, you should remove any loom.mixin configuration. If you wish to continue to use the mixin AP you can set useLegacyMixinAp = true.";
@@ -58,7 +59,7 @@ public abstract class MixinExtensionApiImpl implements MixinExtensionAPI {
 				.convention(false);
 
 		this.refmapTargetNamespace = project.getObjects().property(String.class)
-				.convention(MappingsNamespace.INTERMEDIARY.toString());
+				.convention(project.provider(() -> IntermediaryNamespaces.runtimeIntermediary(project)));
 		this.refmapTargetNamespace.finalizeValueOnRead();
 
 		this.messages = project.getObjects().mapProperty(String.class, String.class);
@@ -79,9 +80,20 @@ public abstract class MixinExtensionApiImpl implements MixinExtensionAPI {
 		return useMixinAp;
 	}
 
+	protected void checkMixinApEnabled() {
+		if (LoomGradleExtension.get(project).isForge()) {
+			// Arch: We need to access afterEvaluate state in useLegacyMixinAp's convention, so let's not query it.
+			// Otherwise, this extension can't be used in a buildscript without afterEvaluate.
+			// https://github.com/architectury/architectury-loom/issues/242
+			return;
+		}
+
+		if (!getUseLegacyMixinAp().get()) logLegacyMixinAPConfiguration();
+	}
+
 	@Override
 	public Property<String> getRefmapTargetNamespace() {
-		if (!getUseLegacyMixinAp().get()) logLegacyMixinAPConfiguration();
+		checkMixinApEnabled();
 
 		return refmapTargetNamespace;
 	}

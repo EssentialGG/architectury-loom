@@ -143,8 +143,9 @@ public abstract class ProcessedNamedMinecraftProvider<M extends MinecraftProvide
 
 	@Override
 	protected String getName(MinecraftJar.Type type) {
+		final String jarPrefix = parentMinecraftProvider.getMinecraftProvider().getJarPrefix();
 		// Hash the cache value so that we don't have to process the same JAR multiple times for many projects
-		return "minecraft-%s-%s".formatted(type.toString(), jarProcessorManager.getJarHash());
+		return jarPrefix + "minecraft-%s-%s".formatted(type.toString(), jarProcessorManager.getJarHash());
 	}
 
 	@Override

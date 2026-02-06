@@ -22,19 +22,21 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
 	}
 }
 
-group = 'net.fabricmc'
+group = "gg.essential"
 def baseVersion = '1.14'
 
 def ENV = System.getenv()
-if (ENV.BUILD_NUMBER) {
-	if (ENV.EXPERIMENTAL) {
-		version = baseVersion + '.0-alpha.' + ENV.BUILD_NUMBER
-	} else {
-		version = baseVersion + '.' + ENV.BUILD_NUMBER
-	}
+def runNumber = ENV.GITHUB_RUN_NUMBER ?: "9999"
+
+def isSnapshot = ENV.PR_NUM != null
+
+if (!isSnapshot) {
+	version = baseVersion + "." + runNumber
 } else {
-	version = baseVersion + '.local'
+	version = baseVersion + "-PR." + ENV.PR_NUM + "." + runNumber
 }
+
+logger.lifecycle(":building plugin v${version}")
 
 // We must build against the version of Kotlin Gradle ships with.
 def props = new Properties()
@@ -47,16 +49,21 @@ if (libs.versions.kotlin.get() != kotlinVersion) {
 }
 
 repositories {
-	maven {
-		name = 'Fabric'
-		url = 'https://maven.fabricmc.net/'
-	}
 	mavenCentral()
+	maven { url = "https://maven.fabricmc.net/" }
+	maven { url = "https://maven.architectury.dev/" }
+	maven {
+		url = "https://maven.minecraftforge.net/"
+		content {
+			excludeGroupByRegex "org\\.eclipse\\.?.*"
+		}
+	}
 }
 
 configurations.configureEach {
 	resolutionStrategy {
-		failOnNonReproducibleResolution()
+		// I am sorry, for now
+		// failOnNonReproducibleResolution()
 	}
 }
 
@@ -64,6 +71,12 @@ configurations.named(JavaPlugin.API_ELEMENTS_CONFIGURATION_NAME) {
 	attributes {
 		attribute(GradlePluginApiVersion.GRADLE_PLUGIN_API_VERSION_ATTRIBUTE, objects.named(GradlePluginApiVersion, GradleVersion.current().getVersion()))
 	}
+}
+
+// Arch: Prevent compiling against Guava.
+// The dependency is still leaked from DFU, but it shouldn't be used to keep up with upstream standards.
+configurations.named('compileClasspath') {
+	exclude group: 'com.google.guava'
 }
 
 sourceSets {
@@ -98,6 +111,7 @@ dependencies {
 
 	// game handling utils
 	implementation (libs.fabric.stitch) {
+		exclude module: 'mercury'
 		exclude module: 'enigma'
 	}
 
@@ -108,6 +122,7 @@ dependencies {
 	implementation (libs.fabric.lorenz.tiny) {
 		transitive = false
 	}
+	implementation "dev.architectury:refmap-remapper:1.0.5"
 
 	implementation libs.fabric.loom.nativelib
 
@@ -145,6 +160,23 @@ dependencies {
 	// Kapt integration
 	compileOnly libs.kotlin.gradle.plugin
 
+	// Forge patches
+	implementation libs.lorenz
+	implementation libs.mcinjector
+	implementation libs.opencsv
+	implementation libs.forge.diffpatch
+	implementation libs.datafixerupper
+	implementation libs.at
+
+	// Forge mods.toml parsing
+	implementation libs.night.config.toml
+
+	// Legacy Forge patches
+	implementation libs.lzma
+
+	// quilt.mod.json5 parsing
+	implementation libs.jankson
+
 	// Testing
 	testImplementation(gradleTestKit())
 	testImplementation(testLibs.spock) {
@@ -161,6 +193,8 @@ dependencies {
 	testImplementation testLibs.bcutil
 	testImplementation testLibs.bcpkix
 	testImplementation testLibs.fabric.loader
+
+	runtimeOnly testLibs.pack200
 
 	compileOnly runtimeLibs.jetbrains.annotations
 	testCompileOnly runtimeLibs.jetbrains.annotations
@@ -199,8 +233,9 @@ spotless {
 	lineEndings = com.diffplug.spotless.LineEnding.UNIX
 
 	java {
-		licenseHeaderFile(rootProject.file("HEADER")).yearSeparator("-")
-		targetExclude("**/loom/util/DownloadUtil.java")
+		// licenseHeaderFile(rootProject.file("HEADER")).yearSeparator("-")
+		targetExclude("**/loom/util/DownloadUtil.java", "**/loom/util/FileSystemUtil.java")
+		targetExclude("**/dev/architectury/**")
 	}
 
 	groovy {
@@ -212,6 +247,12 @@ spotless {
 	groovyGradle {
 		target 'src/**/*.gradle', '*.gradle'
 		greclipse()
+
+		targetExclude(
+				// These files use a @MAPPINGS@ token which is not valid Groovy
+				'**/projects/forge/simple/build.gradle',
+				'**/projects/neoforge/simple/build.gradle'
+				)
 	}
 
 	kotlin {
@@ -235,15 +276,15 @@ codenarc {
 gradlePlugin {
 	plugins {
 		fabricLoom {
-			id = 'fabric-loom'
+			id = 'gg.essential.loom'
 			implementationClass = 'net.fabricmc.loom.LoomGradlePlugin'
 		}
 		fabricLoomCompanion {
-			id = 'net.fabricmc.fabric-loom-companion'
+			id = 'gg.essential.loom-companion'
 			implementationClass = 'net.fabricmc.loom.LoomCompanionGradlePlugin'
 		}
 		fabricLoomNoRemap {
-			id = 'net.fabricmc.fabric-loom-no-remap'
+			id = 'gg.essential.loom-no-remap'
 			implementationClass = 'net.fabricmc.loom.LoomNoRemapGradlePlugin'
 		}
 	}
@@ -285,53 +326,16 @@ tasks.withType(Test).configureEach {
 
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.gradle.util.GradleVersion
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import org.w3c.dom.Node
 
 publishing {
-	publications {
-		if (!ENV.EXPERIMENTAL) {
-			// Also publish a snapshot so people can use the latest version if they wish
-			snapshot(MavenPublication) { publication ->
-				groupId = project.group
-				artifactId = project.base.archivesName.get()
-				version = baseVersion + '-SNAPSHOT'
-
-				from components.java
-			}
-
-			gradlePlugin.plugins.forEach { plugin ->
-				// Manually crate the plugin marker for snapshot versions
-				it.create(plugin.id + "SnapshotMarker", MavenPublication) { publication ->
-					groupId = plugin.id
-					artifactId = plugin.id + '.gradle.plugin'
-					version = baseVersion + '-SNAPSHOT'
-
-					pom.withXml({
-						// Based off org.gradle.plugin.devel.plugins.MavenPluginPublishPlugin
-						Element root = asElement()
-						Document document = root.getOwnerDocument()
-						Node dependencies = root.appendChild(document.createElement('dependencies'))
-						Node dependency = dependencies.appendChild(document.createElement('dependency'))
-						Node groupId = dependency.appendChild(document.createElement('groupId'))
-						groupId.setTextContent('net.fabricmc')
-						Node artifactId = dependency.appendChild(document.createElement('artifactId'))
-						artifactId.setTextContent('fabric-loom')
-						Node version = dependency.appendChild(document.createElement('version'))
-						version.setTextContent(project.version)
-					})
-				}
-			}
-		}
-	}
 	repositories {
-		maven {
-			if (ENV.MAVEN_URL) {
-				url ENV.MAVEN_URL
+		if (System.getenv("NEXUS_USER") != null) {
+			maven {
+				url = "https://repo.essential.gg/public"
+				name = "nexus-public"
 				credentials {
-					username ENV.MAVEN_USERNAME
-					password ENV.MAVEN_PASSWORD
+					username = System.getenv("NEXUS_USER")
+					password = System.getenv("NEXUS_PASSWORD")
 				}
 			}
 		}
@@ -343,7 +347,7 @@ tasks.register('writeActionsTestMatrix') {
 	doLast {
 		def testMatrix = []
 		def extendedTests = Boolean.parseBoolean(System.getenv('EXTENDED_TESTS') ?: 'false')
-		file('src/test/groovy/net/fabricmc/loom/test/integration').eachFile {
+		file('src/test/groovy/net/fabricmc/loom/test/integration').traverse {
 			if (it.name.endsWith("Test.groovy")) {
 				if (it.name.endsWith("ReproducibleBuildTest.groovy")) {
 					// This test gets a special case to run across all os's
@@ -355,7 +359,14 @@ tasks.register('writeActionsTestMatrix') {
 					return
 				}
 
-				def className = it.name.replace(".groovy", "")
+				if (it.name.endsWith("FabricAPITest.groovy")) {
+					// Arch: Disabled as it hangs
+					return
+				}
+
+				def className = it.path.toString().replace(".groovy", "")
+				className = className.substring(className.lastIndexOf("integration/") + "integration/".length()).replace('/', '.')
+
 				testMatrix.add("net.fabricmc.loom.test.integration.${className}")
 			} else if (it.name.endsWith("noRemap")) {
 				testMatrix.add("net.fabricmc.loom.test.integration.noRemap.*")
@@ -395,6 +406,10 @@ tasks.register('downloadGradleSources') {
 		println("Downloading (${url}) to (${gradleApiSources})")
 		gradleApiSources << new URL(url).newInputStream()
 	}
+}
+
+tasks.withType(GenerateModuleMetadata) {
+	enabled = false
 }
 
 tasks.register('printActionsTestName', PrintActionsTestName) {

@@ -94,7 +94,7 @@ public final class MappingsService extends Service<MappingsService.Options> impl
 	 */
 	public static Provider<Options> createOptionsWithProjectMappings(Project project, Provider<String> from, Provider<String> to) {
 		final MappingConfiguration mappingConfiguration = LoomGradleExtension.get(project).getMappingConfiguration();
-		return createOptions(project, mappingConfiguration.tinyMappings, from, to, false);
+		return createOptions(project, LoomGradleExtension.get(project).getPlatformMappingFile(), from, to, false);
 	}
 
 	public static Provider<MappingsService.Options> createForRemapTask(AbstractRemapJarTask remapJarTask) {

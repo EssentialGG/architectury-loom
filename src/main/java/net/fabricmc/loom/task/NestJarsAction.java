@@ -35,6 +35,7 @@ import org.gradle.api.Task;
 import org.gradle.api.file.ConfigurableFileCollection;
 import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.Property;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.jvm.tasks.Jar;
 import org.gradle.workers.WorkAction;
@@ -45,7 +46,9 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.build.nesting.JarNester;
+import net.fabricmc.loom.util.ModPlatform;
 
 /**
  * Configuration-cache-compatible action for nesting jars.
@@ -59,9 +62,12 @@ public abstract class NestJarsAction implements Action<Task>, Serializable {
 	@Inject
 	protected abstract WorkerExecutor getWorkerExecutor();
 
+	protected abstract Property<ModPlatform> getPlatform();
+
 	public static void addToTask(Jar task, FileCollection jars) {
 		NestJarsAction nestJarsAction = task.getProject().getObjects().newInstance(NestJarsAction.class);
 		nestJarsAction.getJars().from(jars);
+		nestJarsAction.getPlatform().set(LoomGradleExtension.get(task.getProject()).getPlatform());
 		task.getInputs().files(nestJarsAction.getJars()); // I don't think @InputFiles works, so to be sure add the jars to the task input anyway.
 		task.doLast(nestJarsAction);
 	}
@@ -75,12 +81,14 @@ public abstract class NestJarsAction implements Action<Task>, Serializable {
 		workQueue.submit(NestAction.class, p -> {
 			p.getArchiveFile().set(jarTask.getArchiveFile());
 			p.getJars().setFrom(getJars());
+			p.getPlatform().set(getPlatform());
 		});
 	}
 
 	public interface NestJarsParameters extends WorkParameters {
 		RegularFileProperty getArchiveFile();
 		ConfigurableFileCollection getJars();
+		Property<ModPlatform> getPlatform();
 	}
 
 	public abstract static class NestAction implements WorkAction<NestJarsParameters> {
@@ -90,10 +98,11 @@ public abstract class NestJarsAction implements Action<Task>, Serializable {
 		public void execute() {
 			final File jarFile = getParameters().getArchiveFile().get().getAsFile();
 			final Set<File> jars = getParameters().getJars().getFiles();
+			final ModPlatform platform = getParameters().getPlatform().get();
 
 			// Nest all collected jars
 			if (!jars.isEmpty()) {
-				JarNester.nestJars(jars, jarFile, LOGGER);
+				JarNester.nestJars(jars, jarFile, platform, LOGGER);
 				LOGGER.info("Nested {} jar(s) into {}", jars.size(), jarFile.getName());
 			}
 		}
