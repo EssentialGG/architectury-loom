@@ -43,6 +43,7 @@ import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
+import dev.architectury.loom.forge.CoreModManagerTransformer;
 import dev.architectury.loom.forge.dependency.ForgeProvider;
 import dev.architectury.loom.forge.dependency.PatchProvider;
 import dev.architectury.loom.util.Stopwatch;
@@ -62,7 +63,6 @@ import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.FileSystemUtil;
 import net.fabricmc.loom.util.Pair;
 import net.fabricmc.loom.util.ZipUtils;
-import net.fabricmc.loom.util.legacyforge.CoreModManagerTransformer;
 import net.fabricmc.loom.util.service.ServiceFactory;
 import net.fabricmc.stitch.merge.JarMerger;
 

@@ -1,4 +1,4 @@
-package net.fabricmc.loom.util.legacyforge;
+package dev.architectury.loom.forge;
 
 import static org.objectweb.asm.Opcodes.ACC_PRIVATE;
 import static org.objectweb.asm.Opcodes.ACC_STATIC;
