@@ -172,7 +172,10 @@ public abstract class LoomGradleExtensionApiImpl implements LoomGradleExtensionA
 		this.productionNamespace.convention(project.provider(() -> LoomGradleExtension.get(project).getMetadataProvider().isUnobfuscated() ? MappingsNamespace.OFFICIAL.toString() : IntermediaryNamespaces.runtimeIntermediary(project)));
 		this.productionNamespace.finalizeValueOnRead();
 		this.useIntermediateMappings = project.getObjects().property(Boolean.class);
-		this.useIntermediateMappings.convention(project.provider(() -> !LoomGradleExtension.get(project).getMetadataProvider().isUnobfuscated()));
+		this.useIntermediateMappings.convention(project.provider(() -> {
+			var extension = LoomGradleExtension.get(project);
+			return !extension.disableObfuscation() && !extension.getMetadataProvider().isUnobfuscated();
+		}));
 		this.useIntermediateMappings.finalizeValueOnRead();
 		this.defaultMixinRemapType = project.getObjects().property(String.class);
 		this.defaultMixinRemapType.convention(project.provider(() -> {
