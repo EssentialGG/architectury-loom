@@ -276,7 +276,7 @@ public abstract class CompileConfiguration implements Runnable {
 		}
 
 		// Provide the remapped mc jars
-		IntermediaryMinecraftProvider<?> intermediaryMinecraftProvider = extension.disableObfuscation() ? null : jarConfiguration.createIntermediaryMinecraftProvider(project);
+		IntermediaryMinecraftProvider<?> intermediaryMinecraftProvider = extension.getUseIntermediateMappings().get() ? jarConfiguration.createIntermediaryMinecraftProvider(project) : null;
 		NamedMinecraftProvider<?> namedMinecraftProvider = jarConfiguration.createNamedMinecraftProvider(project);
 
 		registerGameProcessors(configContext);
