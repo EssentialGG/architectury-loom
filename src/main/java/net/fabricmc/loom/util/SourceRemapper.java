@@ -33,7 +33,6 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -50,7 +49,6 @@ import org.slf4j.Logger;
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.RemapConfigurationSettings;
 import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
-import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.configuration.providers.mappings.MappingConfiguration;
 import net.fabricmc.loom.task.service.LorenzMappingService;
 import net.fabricmc.loom.util.service.ServiceFactory;
@@ -58,21 +56,15 @@ import net.fabricmc.loom.util.service.ServiceFactory;
 public class SourceRemapper {
 	private final Project project;
 	private final ServiceFactory serviceFactory;
-	private String from;
-	private String to;
+	private final boolean toNamed;
 	private final List<Consumer<ProgressLogger>> remapTasks = new ArrayList<>();
 
 	private Mercury mercury;
 
 	public SourceRemapper(Project project, ServiceFactory serviceFactory, boolean toNamed) {
-		this(project, serviceFactory, toNamed ? IntermediaryNamespaces.runtimeIntermediary(project) : "named", !toNamed ? IntermediaryNamespaces.runtimeIntermediary(project) : "named");
-	}
-
-	public SourceRemapper(Project project, ServiceFactory serviceFactory, String from, String to) {
 		this.project = project;
 		this.serviceFactory = serviceFactory;
-		this.from = from;
-		this.to = to;
+		this.toNamed = toNamed;
 	}
 
 	public void scheduleRemapSources(File source, File destination, boolean reproducibleFileOrder, boolean preserveFileTimestamps, Runnable completionCallback) {
@@ -99,7 +91,7 @@ public class SourceRemapper {
 			return;
 		}
 
-		project.getLogger().lifecycle(":remapping sources (Mercury, {} -> {})", from, to);
+		project.getLogger().lifecycle(":remapping sources");
 
 		ProgressLoggerFactory progressLoggerFactory = ((ProjectInternal) project).getServices().get(ProgressLoggerFactory.class);
 		ProgressLogger progressLogger = progressLoggerFactory.newOperation(SourceRemapper.class.getName());
@@ -179,11 +171,11 @@ public class SourceRemapper {
 		LorenzMappingService lorenzMappingService = serviceFactory.get(LorenzMappingService.createOptions(
 				project,
 				mappingConfiguration,
-				Objects.requireNonNull(MappingsNamespace.of(from)),
-				Objects.requireNonNull(MappingsNamespace.of(to))));
+				toNamed ? extension.getProductionNamespaceEnum() : MappingsNamespace.NAMED,
+				toNamed ? MappingsNamespace.NAMED : extension.getProductionNamespaceEnum()));
 		MappingSet mappings = lorenzMappingService.getMappings();
 
-		Mercury mercury = createMercuryWithClassPath(project, MappingsNamespace.of(to) == MappingsNamespace.NAMED);
+		Mercury mercury = createMercuryWithClassPath(project, toNamed);
 		// Always use the latest version
 		mercury.setSourceCompatibilityFromRelease(Integer.MAX_VALUE);
 
@@ -201,12 +193,6 @@ public class SourceRemapper {
 
 		for (Path intermediaryJar : extension.getMinecraftJars(MappingsNamespace.NAMED)) {
 			mercury.getClassPath().add(intermediaryJar);
-		}
-
-		if (extension.isForgeLike()) {
-			for (Path jar : extension.getMinecraftJars(IntermediaryNamespaces.runtimeIntermediaryNamespace(project))) {
-				mercury.getClassPath().add(jar);
-			}
 		}
 
 		Set<File> files = project.getConfigurations()
