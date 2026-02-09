@@ -61,7 +61,7 @@ class FabricAPITest extends Specification implements GradleProjectTestTrait {
 		// Change the plugin used
 		gradle.buildGradle.text = gradle.buildGradle.text
 				.replace('id "fabric-loom" version "1.6.11"', 'id "gg.essential.loom"')
-				.replace('"fabric-loom"', '"gg.essential.loom"') + mixinApPatch
+				.replace('"fabric-loom"', '"gg.essential.loom"')
 
 		def minecraftVersion = "1.21.6-pre3"
 		def server = ServerRunner.create(gradle.projectDir, minecraftVersion)
