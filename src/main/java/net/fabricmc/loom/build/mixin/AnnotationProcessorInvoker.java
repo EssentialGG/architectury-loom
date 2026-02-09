@@ -26,6 +26,7 @@ package net.fabricmc.loom.build.mixin;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Locale;
@@ -44,6 +45,7 @@ import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskProvider;
 
 import net.fabricmc.loom.LoomGradleExtension;
+import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.configuration.ide.idea.IdeaUtils;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftSourceSets;
 import net.fabricmc.loom.extension.MixinExtension;
@@ -98,16 +100,17 @@ public abstract class AnnotationProcessorInvoker<T extends Task> {
 		try {
 			LoomGradleExtension loom = LoomGradleExtension.get(project);
 			String refmapName = Objects.requireNonNull(MixinExtension.getMixinInformationContainer(sourceSet)).refmapNameProvider().get();
+			Path mappings = loom.getMappingConfiguration().getReplacedTarget(loom, loom.getMixin().getRefmapTargetNamespace().get());
 
 			final File mixinMappings = getMixinMappingsForSourceSet(project, sourceSet);
 
-			task.getOutputs().file(mixinMappings).withPropertyName("mixin-ap-" + sourceSet.getName() + "-" + name).optional();
+			task.getOutputs().file(mixinMappings).withPropertyName("mixin-ap-" + sourceSet.getName()).optional();
 
-			String refmapTargetNamespace = loom.getMixin().getRefmapTargetNamespace().get();
+			String refmapTargetNamespace = IntermediaryNamespaces.replaceMixinIntermediaryNamespace(project, loom.getMixin().getRefmapTargetNamespace().get());
 			String capitalizedTargetNamespace = refmapTargetNamespace.substring(0, 1).toUpperCase(Locale.ROOT) + refmapTargetNamespace.substring(1);
 
 			Map<String, String> args = new HashMap<>() {{
-					put(Constants.MixinArguments.IN_MAP_FILE_NAMED + capitalizedTargetNamespace, loom.getMappingConfiguration().tinyMappings.toFile().getCanonicalPath());
+					put(Constants.MixinArguments.IN_MAP_FILE_NAMED + capitalizedTargetNamespace, mappings.toFile().getCanonicalPath());
 					put(Constants.MixinArguments.OUT_MAP_FILE_NAMED + capitalizedTargetNamespace, mixinMappings.getCanonicalPath());
 					put(Constants.MixinArguments.OUT_REFMAP_FILE, getRefmapDestination(task, refmapName));
 					put(Constants.MixinArguments.DEFAULT_OBFUSCATION_ENV, "named:" + refmapTargetNamespace);

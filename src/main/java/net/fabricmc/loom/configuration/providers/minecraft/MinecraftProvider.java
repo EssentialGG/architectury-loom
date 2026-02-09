@@ -62,6 +62,7 @@ public abstract class MinecraftProvider {
 	private File minecraftExtractedServerJar;
 	@Nullable
 	private BundleMetadata serverBundleMetadata;
+	private String jarPrefix = "";
 
 	private final ConfigContext configContext;
 
@@ -79,6 +80,10 @@ public abstract class MinecraftProvider {
 	}
 
 	public void provide() throws Exception {
+		if (getExtension().shouldGenerateSrgTiny() && !getExtension().isForgeLike()) {
+			getProject().getDependencies().add(Constants.Configurations.SRG, "de.oceanlabs.mcp:mcp_config:" + minecraftVersion());
+		}
+
 		initFiles();
 
 		verifyJavaVersion();
@@ -199,7 +204,7 @@ public abstract class MinecraftProvider {
 		return false;
 	}
 
-	private void extractBundledServerJar() throws IOException {
+	public final void extractBundledServerJar() throws IOException {
 		Check.require(provideServer(), "Not configured to provide server jar");
 		Objects.requireNonNull(getServerBundleMetadata(), "Cannot bundled mc jar from none bundled server jar");
 
@@ -269,6 +274,14 @@ public abstract class MinecraftProvider {
 	 */
 	public boolean isLegacySplitOfficialNamespaceVersion() {
 		return getVersionInfo().isLegacySplitOfficialNamespaceVersion();
+	}
+
+	public String getJarPrefix() {
+		return jarPrefix;
+	}
+
+	public void setJarPrefix(String jarSuffix) {
+		this.jarPrefix = jarSuffix;
 	}
 
 	@Nullable

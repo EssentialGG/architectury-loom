@@ -40,20 +40,25 @@ import javax.inject.Inject;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.architectury.loom.forge.dependency.ForgeModClassesService;
 import org.gradle.api.Project;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.services.ServiceReference;
 import org.gradle.api.tasks.Input;
+import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Optional;
 import org.gradle.api.tasks.OutputFile;
 import org.gradle.api.tasks.TaskAction;
+import org.jetbrains.annotations.ApiStatus;
 
 import net.fabricmc.loom.LoomGradlePlugin;
 import net.fabricmc.loom.configuration.ide.RunConfig;
 import net.fabricmc.loom.configuration.ide.RunConfigSettings;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.gradle.SyncTaskBuildService;
+import net.fabricmc.loom.util.service.ScopedServiceFactory;
 
 // Recommended vscode plugin pack:
 // https://marketplace.visualstudio.com/items?itemName=vscjava.vscode-java-pack
@@ -68,11 +73,17 @@ public abstract class GenVsCodeProjectTask extends AbstractLoomTask {
 	@OutputFile
 	protected abstract RegularFileProperty getLaunchJson();
 
+	@ApiStatus.Internal
+	@Nested
+	@Optional
+	protected abstract Property<ForgeModClassesService.Options> getModClassesOptions();
+
 	@Inject
 	public GenVsCodeProjectTask() {
 		setGroup(Constants.TaskGroup.IDE);
 		getLaunchConfigurations().set(getProject().provider(this::getConfigurations));
 		getLaunchJson().convention(getProject().getIsolated().getRootProject().getProjectDirectory().file(".vscode/launch.json"));
+		getModClassesOptions().set(ForgeModClassesService.createOptions(getProject()));
 	}
 
 	private List<VsCodeConfiguration> getConfigurations() {
@@ -119,6 +130,18 @@ public abstract class GenVsCodeProjectTask extends AbstractLoomTask {
 		for (VsCodeConfiguration configuration : getLaunchConfigurations().get()) {
 			JsonObject configurationJson = LoomGradlePlugin.GSON.toJsonTree(configuration).getAsJsonObject();
 			configurationJson.remove("runDir");
+			configurationJson.remove("id");
+
+			if (getModClassesOptions().isPresent()) {
+				try (var serviceFactory = new ScopedServiceFactory()) {
+					ForgeModClassesService service = serviceFactory.get(getModClassesOptions());
+					JsonObject env = configurationJson.getAsJsonObject("env");
+
+					if (env != null && env.has(ForgeModClassesService.ENVIRONMENT_VARIABLE)) {
+						env.addProperty(ForgeModClassesService.ENVIRONMENT_VARIABLE, service.getModClasses(configuration.id));
+					}
+				}
+			}
 
 			final List<JsonElement> toRemove = new ArrayList<>();
 
@@ -150,6 +173,7 @@ public abstract class GenVsCodeProjectTask extends AbstractLoomTask {
 	public record VsCodeConfiguration(
 			String type,
 			String name,
+			String id,
 			String request,
 			String cwd,
 			String console,
@@ -167,6 +191,7 @@ public abstract class GenVsCodeProjectTask extends AbstractLoomTask {
 			return new VsCodeConfiguration(
 					"java",
 					runConfig.configName,
+					runConfig.name,
 					"launch",
 					"${workspaceFolder}/" + relativeRunDir,
 					"integratedTerminal",

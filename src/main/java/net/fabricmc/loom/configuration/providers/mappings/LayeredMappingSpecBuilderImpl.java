@@ -28,8 +28,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import dev.architectury.loom.mappings.crane.CraneMappingsSpec;
 import org.gradle.api.Action;
+import org.jspecify.annotations.Nullable;
 
+import net.fabricmc.loom.api.LoomGradleExtensionAPI;
 import net.fabricmc.loom.api.mappings.layered.spec.FileMappingsSpecBuilder;
 import net.fabricmc.loom.api.mappings.layered.spec.FileSpec;
 import net.fabricmc.loom.api.mappings.layered.spec.LayeredMappingSpecBuilder;
@@ -44,6 +47,12 @@ import net.fabricmc.loom.configuration.providers.mappings.parchment.ParchmentMap
 
 public class LayeredMappingSpecBuilderImpl implements LayeredMappingSpecBuilder {
 	private final List<MappingsSpec<?>> layers = new ArrayList<>();
+	@Nullable
+	private final LoomGradleExtensionAPI extension;
+
+	public LayeredMappingSpecBuilderImpl(@Nullable LoomGradleExtensionAPI extension) {
+		this.extension = extension;
+	}
 
 	@Override
 	public LayeredMappingSpecBuilder addLayer(MappingsSpec<?> mappingSpec) {
@@ -55,7 +64,8 @@ public class LayeredMappingSpecBuilderImpl implements LayeredMappingSpecBuilder 
 	public LayeredMappingSpecBuilder officialMojangMappings(Action<MojangMappingsSpecBuilder> action) {
 		MojangMappingsSpecBuilderImpl builder = MojangMappingsSpecBuilderImpl.builder();
 		action.execute(builder);
-		return addLayer(builder.build());
+		layers.add(builder.build(() -> extension != null && extension.isSilentMojangMappingsLicenseEnabled()));
+		return this;
 	}
 
 	@Override
@@ -63,6 +73,12 @@ public class LayeredMappingSpecBuilderImpl implements LayeredMappingSpecBuilder 
 		ParchmentMappingsSpecBuilderImpl builder = ParchmentMappingsSpecBuilderImpl.builder(FileSpec.create(object));
 		action.execute(builder);
 		return addLayer(builder.build());
+	}
+
+	@Override
+	public LayeredMappingSpecBuilder crane(Object object) {
+		layers.add(new CraneMappingsSpec(FileSpec.create(object)));
+		return this;
 	}
 
 	@Override
@@ -87,7 +103,7 @@ public class LayeredMappingSpecBuilderImpl implements LayeredMappingSpecBuilder 
 	}
 
 	public static LayeredMappingSpec buildOfficialMojangMappings() {
-		var builder = new LayeredMappingSpecBuilderImpl();
+		var builder = new LayeredMappingSpecBuilderImpl(null);
 		builder.officialMojangMappings();
 		return builder.build();
 	}

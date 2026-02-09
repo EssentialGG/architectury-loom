@@ -53,6 +53,7 @@ import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
+import net.fabricmc.loom.build.IntermediaryNamespaces;
 import net.fabricmc.loom.extension.RemapperExtensionHolder;
 import net.fabricmc.loom.task.AbstractRemapJarTask;
 import net.fabricmc.loom.util.Constants;
@@ -107,7 +108,7 @@ public class TinyRemapperService extends Service<TinyRemapperService.Options> im
 			options.getMappings().add(MappingsService.createForRemapTask(remapJarTask));
 
 			if (legacyMixin) {
-				options.getMixinApMappings().set(MixinAPMappingService.createOptions(project, options.getFrom(), options.getTo()));
+				options.getMixinApMappings().set(MixinAPMappingService.createOptions(project, options.getFrom(), options.getTo().map(to -> IntermediaryNamespaces.replaceMixinIntermediaryNamespace(project, to))));
 			}
 
 			options.getUselegacyMixinAP().set(legacyMixin);

@@ -33,15 +33,16 @@ import net.fabricmc.classtweaker.api.ClassTweaker;
 import net.fabricmc.classtweaker.api.ClassTweakerReader;
 import net.fabricmc.loom.configuration.mods.dependency.ModDependency;
 import net.fabricmc.loom.util.Constants;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.tinyremapper.TinyRemapper;
 
 public record AccessWidenerAnalyzeVisitorProvider(ClassTweaker accessWidener) implements TinyRemapper.AnalyzeVisitorProvider {
-	static AccessWidenerAnalyzeVisitorProvider createFromMods(String namespace, List<ModDependency> mods) throws IOException {
+	static AccessWidenerAnalyzeVisitorProvider createFromMods(String namespace, List<ModDependency> mods, ModPlatform platform) throws IOException {
 		ClassTweaker accessWidener = ClassTweaker.newInstance();
 		accessWidener.visitHeader(namespace);
 
 		for (ModDependency mod : mods) {
-			final var accessWidenerData = AccessWidenerUtils.readAccessWidenerData(mod.getInputFile());
+			final var accessWidenerData = AccessWidenerUtils.readAccessWidenerData(mod.getInputFile(), platform);
 
 			if (accessWidenerData == null) {
 				continue;

@@ -24,8 +24,13 @@
 
 package net.fabricmc.loom.task;
 
+import java.util.Map;
+import java.util.Set;
+
 import javax.inject.Inject;
 
+import dev.architectury.loom.accesstransformer.Aw2At;
+import dev.architectury.loom.util.PropertyUtil;
 import org.gradle.api.Action;
 import org.gradle.api.Project;
 import org.gradle.api.Task;
@@ -108,6 +113,24 @@ public abstract class RemapTaskConfiguration implements Runnable {
 		getTasks().named(BasePlugin.ASSEMBLE_TASK_NAME).configure(task -> task.dependsOn(getTasks().named(REMAP_JAR_TASK_NAME)));
 
 		trySetupSourceRemapping();
+
+		getProject().afterEvaluate(p -> {
+			if (extension.isForge()) {
+				if (PropertyUtil.getAndFinalize(extension.getForge().getConvertAccessWideners())) {
+					Aw2At.setup(getProject(), (RemapJarTask) getTasks().getByName(REMAP_JAR_TASK_NAME));
+				}
+
+				Set<String> mixinConfigs = PropertyUtil.getAndFinalize(extension.getForge().getMixinConfigs());
+
+				if (!mixinConfigs.isEmpty()) {
+					getTasks().named(JavaPlugin.JAR_TASK_NAME, Jar.class, task -> {
+						task.manifest(manifest -> {
+							manifest.attributes(Map.of(Constants.Forge.MIXIN_CONFIGS_MANIFEST_KEY, String.join(",", mixinConfigs)));
+						});
+					});
+				}
+			}
+		});
 
 		if (GradleUtils.getBooleanProperty(getProject(), Constants.Properties.DISABLE_REMAPPED_VARIANTS)) {
 			return;

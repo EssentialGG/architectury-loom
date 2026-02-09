@@ -36,23 +36,43 @@ import java.util.function.Predicate;
 import java.util.jar.Attributes;
 import java.util.jar.Manifest;
 
+import com.google.gson.JsonObject;
+import com.google.gson.JsonSyntaxException;
+import org.gradle.api.Project;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import net.fabricmc.loom.LoomGradlePlugin;
 import net.fabricmc.loom.configuration.InstallerData;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.FileSystemUtil;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.fmj.FabricModJsonFactory;
+import net.fabricmc.loom.util.gradle.GradleUtils;
 
+// ARCH: isFabricMod means "is mod on current platform"
 public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequirements, @Nullable InstallerData installerData, MixinRemapType mixinRemapType, List<String> knownIdyBsms) {
+	private static final Logger LOGGER = LoggerFactory.getLogger(ArtifactMetadata.class);
+
 	public static ArtifactMetadata create(ArtifactRef artifact, String currentLoomVersion, MixinRemapType defaultMixinRemapType) throws IOException {
+		return create(null, artifact, currentLoomVersion, defaultMixinRemapType, ModPlatform.FABRIC);
+	}
+
+	public static ArtifactMetadata create(@Nullable Project project, ArtifactRef artifact, String currentLoomVersion, MixinRemapType defaultMixinRemapType, ModPlatform platform) throws IOException {
 		boolean isFabricMod;
 		RemapRequirements remapRequirements = RemapRequirements.DEFAULT;
 		InstallerData installerData = null;
 		MixinRemapType refmapRemapType = defaultMixinRemapType;
 		List<String> knownIndyBsms = new ArrayList<>();
 
+		// Force-remap all mods on Forge and NeoForge.
+		if (platform.isForgeLike()) {
+			remapRequirements = RemapRequirements.OPT_IN;
+		}
+
 		try (FileSystemUtil.Delegate fs = FileSystemUtil.getJarFileSystem(artifact.path())) {
-			isFabricMod = FabricModJsonFactory.containsMod(fs);
+			isFabricMod = FabricModJsonFactory.containsMod(fs, platform);
 			final Path manifestPath = fs.getPath(Constants.Manifest.PATH);
 
 			if (Files.exists(manifestPath)) {
@@ -62,6 +82,7 @@ public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequi
 				final String loomVersion = mainAttributes.getValue(Constants.Manifest.LOOM_VERSION);
 				final String mixinRemapType = mainAttributes.getValue(Constants.Manifest.MIXIN_REMAP_TYPE);
 				final String knownIndyBsmsValue = mainAttributes.getValue(Constants.Manifest.KNOWN_IDY_BSMS);
+				final String mixinConfigs = mainAttributes.getValue(Constants.Forge.MIXIN_CONFIGS_MANIFEST_KEY);
 
 				if (remapValue != null) {
 					// Support opting into and out of remapping with "Fabric-Loom-Remap" manifest entry
@@ -74,10 +95,15 @@ public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequi
 					} catch (IllegalArgumentException e) {
 						throw new IllegalStateException("Unknown mixin remap type: " + mixinRemapType);
 					}
+				} else if (mixinConfigs != null && platform == ModPlatform.FORGE && hasRefmaplessMixinConfig(fs, mixinConfigs)) {
+					// On Forge, we support both mixins with and without refmaps.
+					// Check for mixins without them, and if any are found, mark the remap type as static.
+					refmapRemapType = MixinRemapType.STATIC;
 				}
 
 				if (loomVersion != null && refmapRemapType == MixinRemapType.STATIC) {
-					validateLoomVersion(loomVersion, currentLoomVersion);
+					final boolean lenient = project != null && GradleUtils.getBooleanProperty(project, Constants.Properties.IGNORE_DEPENDENCY_LOOM_VERSION_VALIDATION);
+					validateLoomVersion(loomVersion, currentLoomVersion, lenient);
 				}
 
 				if (knownIndyBsmsValue != null) {
@@ -85,7 +111,8 @@ public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequi
 				}
 			}
 
-			final Path installerPath = fs.getPath(InstallerData.INSTALLER_PATH);
+			final String installerFile = platform == ModPlatform.QUILT ? InstallerData.QUILT_INSTALLER_PATH : InstallerData.INSTALLER_PATH;
+			final Path installerPath = fs.getPath(installerFile);
 
 			if (isFabricMod && Files.exists(installerPath)) {
 				installerData = InstallerData.fromBytes(Files.readAllBytes(installerPath), artifact.version());
@@ -95,9 +122,25 @@ public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequi
 		return new ArtifactMetadata(isFabricMod, remapRequirements, installerData, refmapRemapType, Collections.unmodifiableList(knownIndyBsms));
 	}
 
+	private static boolean hasRefmaplessMixinConfig(FileSystemUtil.Delegate fs, String mixinConfigs) throws IOException {
+		for (String mixinConfig : mixinConfigs.split(",")) {
+			try {
+				final JsonObject json = LoomGradlePlugin.GSON.fromJson(Files.readString(fs.getPath(mixinConfig)), JsonObject.class);
+
+				if (!json.has("refmap")) {
+					return true;
+				}
+			} catch (JsonSyntaxException e) {
+				LOGGER.error("Could not parse mixin config in file {}", mixinConfig, e);
+			}
+		}
+
+		return false;
+	}
+
 	// Validates that the version matches or is less than the current loom version
 	// This is only done for jars with tiny-remapper remapped mixins.
-	private static void validateLoomVersion(String version, String currentLoomVersion) {
+	private static void validateLoomVersion(String version, String currentLoomVersion, boolean lenient) {
 		if ("0.0.0+unknown".equals(currentLoomVersion)) {
 			// Unknown version, skip validation. This is the case when running from source (tests)
 			return;
@@ -112,6 +155,11 @@ public record ArtifactMetadata(boolean isFabricMod, RemapRequirements remapRequi
 			final int currentVersionPart = Integer.parseInt(currentVersionParts[i]);
 
 			if (versionPart > currentVersionPart) {
+				if (lenient) {
+					System.err.printf("Mod was built with a newer version of Loom (%s), you are using Loom (%s)%n", version, currentLoomVersion);
+					return;
+				}
+
 				throw new IllegalStateException("Mod was built with a newer version of Loom (%s), you are using Loom (%s)".formatted(version, currentLoomVersion));
 			} else if (versionPart < currentVersionPart) {
 				// Older version, no need to check further

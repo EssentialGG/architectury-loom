@@ -37,6 +37,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -44,10 +46,13 @@ import java.util.Objects;
 import java.util.StringJoiner;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.inject.Inject;
 
+import dev.architectury.loom.forge.ForgeSourcesService;
 import org.gradle.api.file.ConfigurableFileCollection;
+import org.gradle.api.file.FileCollection;
 import org.gradle.api.file.RegularFileProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.services.ServiceReference;
@@ -175,6 +180,10 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 	@Optional
 	protected abstract Property<UnpickService.Options> getUnpickOptions();
 
+	@Nested
+	@Optional
+	protected abstract Property<ForgeSourcesService.Options> getForgeSourcesOptions();
+
 	// Prevent Gradle from running two gen sources tasks in parallel
 	@ServiceReference(SyncTaskBuildService.NAME)
 	abstract Property<SyncTaskBuildService> getSyncTask();
@@ -230,6 +239,8 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 		getMaxCacheFileAge().set(GradleUtils.getIntegerPropertyProvider(getProject(), Constants.Properties.DECOMPILE_CACHE_MAX_AGE).orElse(90));
 
 		getDaemonUtilsContext().set(getProject().getObjects().newInstance(DaemonUtils.Context.class, getProject()));
+
+		getForgeSourcesOptions().set(ForgeSourcesService.createOptions(getProject()));
 
 		mustRunAfter(getProject().getTasks().withType(AbstractRemapJarTask.class));
 	}
@@ -325,6 +336,8 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 
 			try (var timer = new Timer("Decompile")) {
 				outputLineNumbers = runDecompileJob(workInputJar, workToDoJob.output(), existingClasses);
+				removeForgeInnerClassSources(workToDoJob.output());
+				outputLineNumbers = filterForgeLineNumbers(outputLineNumbers);
 			}
 
 			if (Files.notExists(workToDoJob.output())) {
@@ -372,6 +385,8 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 
 		try (var timer = new Timer("Decompile")) {
 			lineNumbers = runDecompileJob(workClassesJar, sourcesOutputJar, null);
+			removeForgeInnerClassSources(sourcesOutputJar);
+			lineNumbers = filterForgeLineNumbers(lineNumbers);
 		}
 
 		if (Files.notExists(sourcesOutputJar)) {
@@ -444,6 +459,16 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 			getLogger().warn("Decompile worker logging disabled as Unix Domain Sockets is not supported on your operating system.");
 
 			doWork(null, inputJar, outputJar, lineMapFile, existingJar);
+
+			// Inject Forge's own sources
+			try (var serviceFactory = new ScopedServiceFactory()) {
+				final @Nullable ForgeSourcesService service = serviceFactory.getOrNull(getForgeSourcesOptions());
+
+				if (service != null) {
+					service.addForgeSources(inputJar, outputJar);
+				}
+			}
+
 			return readLineNumbers(lineMapFile);
 		}
 
@@ -460,7 +485,71 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 			Files.deleteIfExists(ipcPath);
 		}
 
+		// Inject Forge's own sources
+		try (var serviceFactory = new ScopedServiceFactory()) {
+			final @Nullable ForgeSourcesService service = serviceFactory.getOrNull(getForgeSourcesOptions());
+
+			if (service != null) {
+				service.addForgeSources(inputJar, outputJar);
+			}
+		}
+
 		return readLineNumbers(lineMapFile);
+	}
+
+	@Nullable
+	private ClassLineNumbers filterForgeLineNumbers(@Nullable ClassLineNumbers lineNumbers) {
+		if (lineNumbers == null) {
+			return null;
+		}
+
+		if (getModPlatform().get().isForgeLike()) {
+			// Remove Forge and NeoForge classes from linemap
+			// TODO: We should instead not decompile Forge's classes at all
+			var lineMap = new HashMap<String, ClassLineNumbers.Entry>();
+
+			for (Map.Entry<String, ClassLineNumbers.Entry> entry : lineNumbers.lineMap().entrySet()) {
+				String name = entry.getKey();
+
+				if (!name.startsWith("net/minecraftforge/") && !name.startsWith("net/neoforged/")) {
+					lineMap.put(name, entry.getValue());
+				}
+			}
+
+			return new ClassLineNumbers(lineMap);
+		} else {
+			return lineNumbers;
+		}
+	}
+
+	/**
+	 * Some inner classes orders are messed up with forge recompilation, I don't know if that is why the decompiler
+	 * would occasionally split out extra inner classes (where with normal fabric setups it doesn't happen),
+	 * but this is a workaround for that.
+	 */
+	private void removeForgeInnerClassSources(Path sourcesJar) throws IOException {
+		if (!getModPlatform().get().isForgeLike()) return;
+
+		try (FileSystemUtil.Delegate outputFs = FileSystemUtil.getJarFileSystem(sourcesJar, false);
+				Stream<Path> walk = Files.walk(outputFs.getRoot())) {
+			Iterator<Path> iterator = walk.iterator();
+
+			while (iterator.hasNext()) {
+				final Path fsPath = iterator.next();
+
+				if (fsPath.startsWith("/META-INF/")) {
+					continue;
+				}
+
+				if (!Files.isRegularFile(fsPath)) {
+					continue;
+				}
+
+				if (fsPath.toString().substring(outputFs.getRoot().toString().length()).indexOf('$') != -1) {
+					Files.delete(fsPath);
+				}
+			}
+		}
 	}
 
 	private void remapLineNumbers(ClassLineNumbers lineNumbers, Path inputJar, Path outputJar) throws IOException {
@@ -501,6 +590,9 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 			if (existingClasses != null) {
 				params.getClassPath().from(existingClasses);
 			}
+
+			// Architectury
+			params.getForge().set(getModPlatform().get().isForgeLike());
 		});
 
 		try {
@@ -553,6 +645,9 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 		RegularFileProperty getIPCPath();
 
 		ConfigurableFileCollection getClassPath();
+
+		// Architectury
+		Property<Boolean> getForge();
 	}
 
 	public abstract static class DecompileAction implements WorkAction<DecompileParams> {
@@ -627,7 +722,11 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 		}
 
 		private Collection<Path> getLibraries() {
-			return getParameters().getClassPath().getFiles().stream().map(File::toPath).collect(Collectors.toSet());
+			return toPaths(getParameters().getClassPath());
+		}
+
+		static Collection<Path> toPaths(FileCollection files) {
+			return files.getFiles().stream().map(File::toPath).collect(Collectors.toSet());
 		}
 	}
 
@@ -639,6 +738,10 @@ public abstract class GenerateSourcesTask extends AbstractLoomTask {
 		}
 
 		return new File(path.substring(0, path.length() - 4) + suffix);
+	}
+
+	static File getJarFileWithSuffix(RegularFileProperty runtimeJar, String suffix) {
+		return getJarFileWithSuffix(suffix, runtimeJar.get().getAsFile().toPath());
 	}
 
 	@Nullable

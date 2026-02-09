@@ -43,6 +43,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.google.gson.JsonObject;
+import dev.architectury.loom.accesstransformer.AtClassRemapper;
+import dev.architectury.loom.forge.CoreModClassRemapper;
+import dev.architectury.loom.mappings.MappingOption;
+import dev.architectury.loom.neoforge.NeoForgeModDependencies;
+import dev.architectury.loom.util.LoggerFilter;
+import dev.architectury.loom.util.Stopwatch;
 import org.gradle.api.Project;
 import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.attributes.Usage;
@@ -58,6 +64,7 @@ import net.fabricmc.loom.configuration.providers.mappings.MappingConfiguration;
 import net.fabricmc.loom.extension.RemapperExtensionHolder;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.IdentityBiMap;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.Pair;
 import net.fabricmc.loom.util.TinyRemapperHelper;
 import net.fabricmc.loom.util.TinyRemapperLoggerAdapter;
@@ -65,6 +72,7 @@ import net.fabricmc.loom.util.ZipUtils;
 import net.fabricmc.loom.util.kotlin.KotlinClasspathService;
 import net.fabricmc.loom.util.kotlin.KotlinRemapperClassloader;
 import net.fabricmc.loom.util.service.ServiceFactory;
+import net.fabricmc.mappingio.tree.MemoryMappingTree;
 import net.fabricmc.tinyremapper.InputTag;
 import net.fabricmc.tinyremapper.NonClassCopyMode;
 import net.fabricmc.tinyremapper.OutputConsumerPath;
@@ -124,6 +132,31 @@ public class ModProcessor {
 	}
 
 	private void stripNestedJars(Path path) {
+		try {
+			ZipUtils.deleteIfExists(path, "META-INF/jarjar/metadata.json");
+		} catch (IOException e) {
+			throw new UncheckedIOException("Failed to strip nested jars from %s".formatted(path), e);
+		}
+
+		if (!ZipUtils.contains(path, "fabric.mod.json")) {
+			if (ZipUtils.contains(path, "quilt.mod.json")) {
+				// Strip out all contained jar info as we dont want loader to try and load the jars contained in dev.
+				try {
+					ZipUtils.transformJson(JsonObject.class, path, Map.of("quilt.mod.json", json -> {
+						if (json.has("quilt_loader")) {
+							json.getAsJsonObject("quilt_loader").remove("jars");
+						}
+
+						return json;
+					}));
+				} catch (IOException e) {
+					throw new UncheckedIOException("Failed to strip nested jars from %s".formatted(path), e);
+				}
+			}
+
+			return;
+		}
+
 		// Strip out all contained jar info as we dont want loader to try and load the jars contained in dev.
 		try {
 			ZipUtils.transformJson(JsonObject.class, path, Map.of("fabric.mod.json", json -> {
@@ -140,6 +173,8 @@ public class ModProcessor {
 		final MappingConfiguration mappingConfiguration = extension.getMappingConfiguration();
 
 		MappingsNamespace productionNamespace = extension.getProductionNamespaceEnum().get();
+		String fromM = productionNamespace.toString();
+		Stopwatch stopwatch = Stopwatch.createStarted();
 
 		Set<String> knownIndyBsms = new HashSet<>(extension.getKnownIndyBsms().get());
 
@@ -147,11 +182,15 @@ public class ModProcessor {
 			knownIndyBsms.addAll(modDependency.getMetadata().knownIdyBsms());
 		}
 
+		MappingOption mappingOption = MappingOption.forPlatform(extension);
+		MemoryMappingTree mappings = mappingConfiguration.getMappingsService(project, serviceFactory, mappingOption).getMappingTree();
+		LoggerFilter.replaceSystemOut();
+
 		TinyRemapper.Builder builder = TinyRemapper.newRemapper(TinyRemapperLoggerAdapter.INSTANCE)
 				.withKnownIndyBsm(knownIndyBsms)
-				.withMappings(TinyRemapperHelper.create(mappingConfiguration.getMappingsService(project, serviceFactory).getMappingTree(), productionNamespace.toString(), toM, false))
+				.withMappings(TinyRemapperHelper.create(mappings, fromM, toM, false))
 				.renameInvalidLocals(false)
-				.extraAnalyzeVisitor(AccessWidenerAnalyzeVisitorProvider.createFromMods(productionNamespace.toString(), remapList));
+				.extraAnalyzeVisitor(AccessWidenerAnalyzeVisitorProvider.createFromMods(fromM, remapList, extension.getPlatform().get()));
 
 		final KotlinClasspathService kotlinClasspathService = serviceFactory.getOrNull(KotlinClasspathService.createOptions(project));
 		KotlinRemapperClassloader kotlinRemapperClassloader = null;
@@ -217,7 +256,8 @@ public class ModProcessor {
 					outputConsumer.addNonClassFiles(dependency.getInputFile(), NonClassCopyMode.FIX_META_INF, remapper);
 					outputConsumerMap.put(dependency, outputConsumer);
 
-					final AccessWidenerUtils.AccessWidenerData accessWidenerData = AccessWidenerUtils.readAccessWidenerData(dependency.getInputFile());
+					final ModPlatform platform = LoomGradleExtension.get(project).getPlatform().get();
+					final AccessWidenerUtils.AccessWidenerData accessWidenerData = AccessWidenerUtils.readAccessWidenerData(dependency.getInputFile(), platform);
 
 					if (accessWidenerData != null) {
 						LOGGER.debug("Remapping access widener in {}", dependency.getInputFile());
@@ -238,6 +278,8 @@ public class ModProcessor {
 			}
 		}
 
+		project.getLogger().lifecycle(":remapped {} mods ({} -> {}) in {}", remapList.size(), fromM, toM, stopwatch.stop());
+
 		for (ModDependency dependency : remapList) {
 			outputConsumerMap.get(dependency).close();
 
@@ -256,6 +298,19 @@ public class ModProcessor {
 
 			stripNestedJars(output);
 			remapJarManifestEntries(output);
+
+			if (extension.isForgeLike()) {
+				if (extension.isNeoForge()) {
+					// NeoForge: Fully map ATs
+					NeoForgeModDependencies.remapAts(output, mappings, fromM, toM);
+				} else {
+					// Forge: only map class names, the rest are mapped srg -> named at runtime
+					AtClassRemapper.remap(project, output, mappings);
+				}
+
+				CoreModClassRemapper.remapJar(project, extension.getPlatform().get(), output, mappings);
+			}
+
 			dependency.copyToCache(project, output, null);
 		}
 	}

@@ -31,9 +31,12 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import javax.inject.Inject;
 
+import dev.architectury.loom.forge.dependency.DependencyProviders;
+import dev.architectury.loom.forge.dependency.ForgeRunsProvider;
 import org.gradle.api.Project;
 import org.gradle.api.configuration.BuildFeatures;
 import org.gradle.api.file.ConfigurableFileCollection;
@@ -46,6 +49,8 @@ import org.gradle.jvm.tasks.Jar;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.LoomNoRemapGradlePlugin;
+import net.fabricmc.loom.api.ForgeExtensionAPI;
+import net.fabricmc.loom.api.NeoForgeExtensionAPI;
 import net.fabricmc.loom.api.mappings.intermediate.IntermediateMappingsProvider;
 import net.fabricmc.loom.api.mappings.layered.MappingsNamespace;
 import net.fabricmc.loom.configuration.InstallerData;
@@ -59,10 +64,14 @@ import net.fabricmc.loom.configuration.providers.minecraft.MinecraftMetadataProv
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.library.LibraryProcessorManager;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.IntermediaryMinecraftProvider;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.MojangMappedMinecraftProvider;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.NamedMinecraftProvider;
 import net.fabricmc.loom.task.NestJarsAction;
 import net.fabricmc.loom.task.RemapJarTask;
+import net.fabricmc.loom.configuration.providers.minecraft.mapped.SrgMinecraftProvider;
 import net.fabricmc.loom.util.Constants;
+import net.fabricmc.loom.util.Lazy;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.download.Download;
 import net.fabricmc.loom.util.download.DownloadBuilder;
 import net.fabricmc.loom.util.gradle.GradleUtils;
@@ -81,6 +90,8 @@ public abstract class LoomGradleExtensionImpl extends LoomGradleExtensionApiImpl
 	private MappingConfiguration mappingConfiguration;
 	private NamedMinecraftProvider<?> namedMinecraftProvider;
 	private IntermediaryMinecraftProvider<?> intermediaryMinecraftProvider;
+	private SrgMinecraftProvider<?> srgMinecraftProvider;
+	private MojangMappedMinecraftProvider<?> mojangMappedMinecraftProvider;
 	private InstallerData installerData;
 	private boolean refreshDeps;
 	private final ListProperty<LibraryProcessorManager.LibraryProcessorFactory> libraryProcessorFactories;
@@ -89,6 +100,14 @@ public abstract class LoomGradleExtensionImpl extends LoomGradleExtensionApiImpl
 	private final boolean isCollectingDependencyVerificationMetadata;
 	private final Property<Boolean> disableObfuscation;
 	private final Property<Boolean> dontRemap;
+
+	// +-------------------+
+	// | Architectury Loom |
+	// +-------------------+
+	private DependencyProviders dependencyProviders;
+	private ForgeRunsProvider forgeRunsProvider;
+	private final Supplier<ForgeExtensionAPI> forgeExtension;
+	private final Supplier<NeoForgeExtensionAPI> neoForgeExtension;
 
 	@Inject
 	protected abstract BuildFeatures getBuildFeatures();
@@ -101,6 +120,8 @@ public abstract class LoomGradleExtensionImpl extends LoomGradleExtensionApiImpl
 		this.mixinApExtension = project.getObjects().newInstance(MixinExtensionImpl.class, project);
 		this.loomFiles = files;
 		this.unmappedMods = project.files();
+		this.forgeExtension = Lazy.of(() -> isForge() ? project.getObjects().newInstance(ForgeExtensionImpl.class, project, this) : null);
+		this.neoForgeExtension = Lazy.of(() -> isNeoForge() ? project.getObjects().newInstance(NeoForgeExtensionImpl.class, project) : null);
 
 		// Setup the default intermediate mappings provider.
 		setIntermediateMappingsProvider(IntermediaryMappingsProvider.class, provider -> {
@@ -217,6 +238,26 @@ public abstract class LoomGradleExtensionImpl extends LoomGradleExtensionApiImpl
 	}
 
 	@Override
+	public SrgMinecraftProvider<?> getSrgMinecraftProvider() {
+		return Objects.requireNonNull(srgMinecraftProvider, "Cannot get SrgMinecraftProvider before it has been setup");
+	}
+
+	@Override
+	public void setSrgMinecraftProvider(SrgMinecraftProvider<?> srgMinecraftProvider) {
+		this.srgMinecraftProvider = srgMinecraftProvider;
+	}
+
+	@Override
+	public MojangMappedMinecraftProvider<?> getMojangMappedMinecraftProvider() {
+		return Objects.requireNonNull(mojangMappedMinecraftProvider, "Cannot get MojangMappedMinecraftProvider before it has been setup");
+	}
+
+	@Override
+	public void setMojangMappedMinecraftProvider(MojangMappedMinecraftProvider<?> mojangMappedMinecraftProvider) {
+		this.mojangMappedMinecraftProvider = mojangMappedMinecraftProvider;
+	}
+
+	@Override
 	public FileCollection getMinecraftJarsCollection(MappingsNamespace mappingsNamespace) {
 		return getProject().files(
 			getProject().provider(() ->
@@ -275,7 +316,8 @@ public abstract class LoomGradleExtensionImpl extends LoomGradleExtensionApiImpl
 		return builder;
 	}
 
-	private boolean manualRefreshDeps() {
+	@Override
+	public boolean manualRefreshDeps() {
 		return project.getGradle().getStartParameter().isRefreshDependencies() || Boolean.getBoolean("loom.refresh");
 	}
 
@@ -367,5 +409,39 @@ public abstract class LoomGradleExtensionImpl extends LoomGradleExtensionApiImpl
 				NestJarsAction.addToTask(task, jars);
 			}
 		});
+	}
+
+	@Override
+	public ForgeExtensionAPI getForge() {
+		ModPlatform.assertPlatform(this, ModPlatform.FORGE);
+		return forgeExtension.get();
+	}
+
+	@Override
+	public NeoForgeExtensionAPI getNeoForge() {
+		ModPlatform.assertPlatform(this, ModPlatform.NEOFORGE);
+		return neoForgeExtension.get();
+	}
+
+	@Override
+	public DependencyProviders getDependencyProviders() {
+		return dependencyProviders;
+	}
+
+	@Override
+	public void setDependencyProviders(DependencyProviders dependencyProviders) {
+		this.dependencyProviders = dependencyProviders;
+	}
+
+	@Override
+	public ForgeRunsProvider getForgeRunsProvider() {
+		ModPlatform.assertForgeLike(this);
+		return forgeRunsProvider;
+	}
+
+	@Override
+	public void setForgeRunsProvider(ForgeRunsProvider forgeRunsProvider) {
+		ModPlatform.assertForgeLike(this);
+		this.forgeRunsProvider = forgeRunsProvider;
 	}
 }

@@ -1,11 +1,11 @@
 pluginManagement {
 	plugins {
-		id 'net.fabricmc.fabric-loom-repositories'
+		id 'gg.essential.loom-repositories'
 	}
 }
 
 plugins {
-	id 'net.fabricmc.fabric-loom-repositories'
+	id 'gg.essential.loom-repositories'
 }
 
 dependencyResolutionManagement {

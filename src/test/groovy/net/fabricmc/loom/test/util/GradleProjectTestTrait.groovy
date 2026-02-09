@@ -256,7 +256,7 @@ trait GradleProjectTestTrait {
 
 		File getGeneratedMinecraft(String mappings, String jarType = "merged", String classifier = "") {
 			String classifierSuffix = classifier.isEmpty() ? "" : "-$classifier"
-			return new File(getGradleHomeDir(), "caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-${jarType}/${mappings}/minecraft-${jarType}-${mappings}${classifierSuffix}.jar")
+			return new File(getGradleHomeDir(), "caches/essential-loom/minecraftMaven/net/minecraft/minecraft-${jarType}/${mappings}/minecraft-${jarType}-${mappings}${classifierSuffix}.jar")
 		}
 
 		File getGeneratedSources(String mappings, String jarType = "merged") {

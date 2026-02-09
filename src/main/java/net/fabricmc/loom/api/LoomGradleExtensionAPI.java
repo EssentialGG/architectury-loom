@@ -26,6 +26,7 @@ package net.fabricmc.loom.api;
 
 import java.io.File;
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.gradle.api.Action;
 import org.gradle.api.NamedDomainObjectContainer;
@@ -51,12 +52,14 @@ import net.fabricmc.loom.api.mappings.layered.spec.LayeredMappingSpecBuilder;
 import net.fabricmc.loom.api.processor.MinecraftJarProcessor;
 import net.fabricmc.loom.api.remapping.RemapperExtension;
 import net.fabricmc.loom.api.remapping.RemapperParameters;
+import net.fabricmc.loom.configuration.ide.RunConfig;
 import net.fabricmc.loom.configuration.ide.RunConfigSettings;
 import net.fabricmc.loom.configuration.processors.JarProcessor;
 import net.fabricmc.loom.configuration.providers.minecraft.ManifestLocations;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftJarConfiguration;
 import net.fabricmc.loom.task.GenerateSourcesTask;
 import net.fabricmc.loom.util.DeprecationHelper;
+import net.fabricmc.loom.util.ModPlatform;
 
 /**
  * This is the public api available exposed to build scripts.
@@ -326,4 +329,63 @@ public interface LoomGradleExtensionAPI {
 	 */
 	@ApiStatus.Experimental
 	void nestJars(TaskProvider<? extends Jar> jarTask, FileCollection jars);
+
+	// ===================
+	//  Architectury Loom
+	// ===================
+	void silentMojangMappingsLicense();
+
+	boolean isSilentMojangMappingsLicenseEnabled();
+
+	Provider<ModPlatform> getPlatform();
+
+	default boolean isForgeLike() {
+		return getPlatform().get().isForgeLike();
+	}
+
+	default boolean isForge() {
+		return getPlatform().get() == ModPlatform.FORGE;
+	}
+
+	default boolean isNeoForge() {
+		return getPlatform().get() == ModPlatform.NEOFORGE;
+	}
+
+	default boolean isQuilt() {
+		return getPlatform().get() == ModPlatform.QUILT;
+	}
+
+	void setGenerateSrgTiny(Boolean generateSrgTiny);
+
+	boolean shouldGenerateSrgTiny();
+
+	default void addTaskBeforeRun(String task) {
+		this.getTasksBeforeRun().add(task);
+	}
+
+	List<String> getTasksBeforeRun();
+
+	List<Consumer<RunConfig>> getSettingsPostEdit();
+
+	/**
+	 * Gets the Forge extension used to configure Forge details.
+	 *
+	 * @return the Forge extension
+	 * @throws UnsupportedOperationException if running on another platform
+	 * @see #isForge()
+	 */
+	ForgeExtensionAPI getForge();
+
+	void forge(Action<ForgeExtensionAPI> action);
+
+	/**
+	 * Gets the NeoForge extension used to configure NeoForge details.
+	 *
+	 * @return the NeoForge extension
+	 * @throws UnsupportedOperationException if running on another platform
+	 * @see #isNeoForge()
+	 */
+	NeoForgeExtensionAPI getNeoForge();
+
+	void neoForge(Action<NeoForgeExtensionAPI> action);
 }

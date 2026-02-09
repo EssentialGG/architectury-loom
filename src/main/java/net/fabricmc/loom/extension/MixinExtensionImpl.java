@@ -67,20 +67,27 @@ public class MixinExtensionImpl extends MixinExtensionApiImpl implements MixinEx
 
 	@Override
 	public Property<String> getDefaultRefmapName() {
-		if (!super.getUseLegacyMixinAp().get()) logLegacyMixinAPConfiguration();
+		checkMixinApEnabled();
 
 		return defaultRefmapName;
 	}
 
 	private String getDefaultMixinRefmapName() {
 		String defaultRefmapName = project.getExtensions().getByType(BasePluginExtension.class).getArchivesName().get() + "-refmap.json";
+
+		if (project.getRootProject() != project) {
+			final String archivesName = project.getExtensions().getByType(BasePluginExtension.class).getArchivesName().get();
+			final String path = project.getPath().substring(1).replace(':', '_');
+			defaultRefmapName = "%s-%s-refmap.json".formatted(archivesName, path);
+		}
+
 		project.getLogger().info("Could not find refmap definition, will be using default name: " + defaultRefmapName);
 		return defaultRefmapName;
 	}
 
 	@Override
 	protected PatternSet add0(SourceSet sourceSet, Provider<String> refmapName) {
-		if (!super.getUseLegacyMixinAp().get()) logLegacyMixinAPConfiguration();
+		checkMixinApEnabled();
 
 		PatternSet pattern = new PatternSet().setIncludes(Collections.singletonList("**/*.json"));
 		MixinExtension.setMixinInformationContainer(sourceSet, new MixinExtension.MixinInformationContainer(sourceSet, refmapName, pattern));

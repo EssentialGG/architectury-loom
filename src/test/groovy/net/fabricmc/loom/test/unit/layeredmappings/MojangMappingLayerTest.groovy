@@ -134,6 +134,6 @@ class MojangMappingLayerTest extends LayeredMappingsSpecification {
 	static def buildMojangMappingsSpec(boolean nameSyntheticFields) {
 		def builder = MojangMappingsSpecBuilderImpl.builder()
 		builder.setNameSyntheticMembers(nameSyntheticFields)
-		return builder.build()
+		return builder.build { false }
 	}
 }

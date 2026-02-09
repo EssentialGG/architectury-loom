@@ -47,6 +47,7 @@ import org.gradle.api.provider.Provider;
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.LoomVersions;
+import net.fabricmc.loom.util.gradle.GradleUtils;
 import net.fabricmc.loom.util.gradle.SourceSetHelper;
 
 public abstract class LoomConfigurations implements Runnable {
@@ -152,6 +153,10 @@ public abstract class LoomConfigurations implements Runnable {
 		// Add the dev time dependencies
 		getDependencies().add(Constants.Configurations.LOOM_DEVELOPMENT_DEPENDENCIES, LoomVersions.DEV_LAUNCH_INJECTOR.mavenNotation());
 		getDependencies().add(Constants.Configurations.LOOM_DEVELOPMENT_DEPENDENCIES, LoomVersions.FABRIC_LOG4J_UTIL.mavenNotation());
+		// The above fabric-log4j-util doesn't work with beta versions of log4j2 (as used by e.g. Minecraft 1.8), so we
+		// add a somewhat arbitrary minimum log4j-core version to ensure we're not using the beta version.
+		// We don't want to be too up-to-date or people might accidentally use log4j features not available in prod.
+		getDependencies().add(Constants.Configurations.LOOM_DEVELOPMENT_DEPENDENCIES, "org.apache.logging.log4j:log4j-core:2.8.1");
 		getDependencies().add(JavaPlugin.COMPILE_ONLY_CONFIGURATION_NAME, LoomVersions.JETBRAINS_ANNOTATIONS.mavenNotation());
 		getDependencies().add(JavaPlugin.TEST_COMPILE_ONLY_CONFIGURATION_NAME, LoomVersions.JETBRAINS_ANNOTATIONS.mavenNotation());
 
@@ -161,6 +166,63 @@ public abstract class LoomConfigurations implements Runnable {
 		extendsFrom(Constants.Configurations.MINECRAFT_TEST_CLIENT_RUNTIME_LIBRARIES, Constants.Configurations.LOADER_DEPENDENCIES);
 
 		register(Constants.Configurations.PRODUCTION_RUNTIME_MODS, Role.RESOLVABLE);
+
+		GradleUtils.afterSuccessfulEvaluation(getProject(), () -> {
+			if (extension.shouldGenerateSrgTiny()) {
+				registerNonTransitive(Constants.Configurations.SRG, Role.RESOLVABLE);
+			}
+		});
+
+		if (extension.isForgeLike()) {
+			// Set up Forge and NeoForge configurations
+			if (extension.isForge()) {
+				// Forge-specific configurations
+				registerNonTransitive(Constants.Configurations.FORGE, Role.RESOLVABLE);
+			} else if (extension.isNeoForge()) {
+				// NeoForge-specific configurations
+				registerNonTransitive(Constants.Configurations.NEOFORGE, Role.RESOLVABLE);
+			}
+
+			registerNonTransitive(Constants.Configurations.FORGE_USERDEV, Role.RESOLVABLE);
+			registerNonTransitive(Constants.Configurations.FORGE_INSTALLER, Role.RESOLVABLE);
+			registerNonTransitive(Constants.Configurations.FORGE_UNIVERSAL, Role.RESOLVABLE);
+			register(Constants.Configurations.FORGE_DEPENDENCIES, Role.RESOLVABLE);
+			registerNonTransitive(Constants.Configurations.FORGE_EXTRA, Role.RESOLVABLE);
+			registerNonTransitive(Constants.Configurations.MCP_CONFIG, Role.RESOLVABLE);
+			register(Constants.Configurations.FORGE_RUNTIME_LIBRARY, Role.RESOLVABLE).configure(configuration -> {
+				// Resolve for runtime usage
+				Usage javaRuntime = getProject().getObjects().named(Usage.class, Usage.JAVA_RUNTIME);
+				configuration.attributes(attributes -> attributes.attribute(Usage.USAGE_ATTRIBUTE, javaRuntime));
+			});
+
+			extendsFrom(Constants.Configurations.MINECRAFT_COMPILE_LIBRARIES, Constants.Configurations.FORGE_DEPENDENCIES);
+			extendsFrom(Constants.Configurations.MINECRAFT_RUNTIME_LIBRARIES, Constants.Configurations.FORGE_DEPENDENCIES);
+			extendsFrom(Constants.Configurations.LOADER_DEPENDENCIES, Constants.Configurations.FORGE_DEPENDENCIES);
+
+			extendsFrom(Constants.Configurations.FORGE_RUNTIME_LIBRARY, Constants.Configurations.FORGE_DEPENDENCIES);
+			extendsFrom(Constants.Configurations.FORGE_RUNTIME_LIBRARY, Constants.Configurations.MINECRAFT_RUNTIME_LIBRARIES);
+			extendsFrom(Constants.Configurations.FORGE_RUNTIME_LIBRARY, Constants.Configurations.FORGE_EXTRA);
+			// Include any user-defined libraries on the runtime CP.
+			// (All the other superconfigurations are already on there.)
+			extendsFrom(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_RUNTIME_LIBRARY);
+			extendsFrom(JavaPlugin.TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_RUNTIME_LIBRARY);
+
+			extendsFrom(JavaPlugin.COMPILE_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_EXTRA);
+			extendsFrom(JavaPlugin.RUNTIME_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_EXTRA);
+			extendsFrom(JavaPlugin.TEST_COMPILE_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_EXTRA);
+			extendsFrom(JavaPlugin.TEST_RUNTIME_CLASSPATH_CONFIGURATION_NAME, Constants.Configurations.FORGE_EXTRA);
+
+			// Add Forge/NeoForge shared dev-time dependencies
+			// TODO: Can we get rid of javax annotations on modern versions?
+			getDependencies().add(JavaPlugin.COMPILE_ONLY_CONFIGURATION_NAME, LoomVersions.JAVAX_ANNOTATIONS.mavenNotation());
+
+			// Add Forge-only dev-time dependencies
+			if (extension.isForge()) {
+				getDependencies().add(Constants.Configurations.FORGE_EXTRA, LoomVersions.NAMING_SERVICE.mavenNotation());
+				getDependencies().add(Constants.Configurations.FORGE_EXTRA, LoomVersions.MIXIN_REMAPPER_SERVICE.mavenNotation());
+				getDependencies().add(Constants.Configurations.FORGE_EXTRA, LoomVersions.MCP_ANNOTATIONS.mavenNotation());
+			}
+		}
 	}
 
 	private NamedDomainObjectProvider<Configuration> register(String name, Role role) {

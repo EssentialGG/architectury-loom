@@ -74,6 +74,7 @@ import net.fabricmc.loom.util.AsyncCache;
 import net.fabricmc.loom.util.Checksum;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.ExceptionUtil;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.SourceRemapper;
 import net.fabricmc.loom.util.gradle.SourceSetHelper;
 import net.fabricmc.loom.util.service.ServiceFactory;
@@ -164,7 +165,7 @@ public class ModConfigurationRemapper {
 			 */
 			final Configuration clientRemappedConfig = clientConfigsToRemap.get(sourceConfig);
 			List<ArtifactRef> artifactRefs = resolveArtifacts(project, sourceConfig);
-			Map<ArtifactRef, ArtifactMetadata> metadataMap = getMetadata(artifactRefs, metaCache, extension.getDefaultMixinRemapTypeEnum().get());
+			Map<ArtifactRef, ArtifactMetadata> metadataMap = getMetadata(artifactRefs, metaCache, extension.getDefaultMixinRemapTypeEnum().get(), project, extension.getPlatform().get());
 			final List<ModDependency> modDependencies = new ArrayList<>();
 
 			for (ArtifactRef artifact : artifactRefs) {
@@ -232,13 +233,13 @@ public class ModConfigurationRemapper {
 		});
 	}
 
-	private static Map<ArtifactRef, ArtifactMetadata> getMetadata(List<ArtifactRef> artifacts, AsyncCache<ArtifactMetadata> cache, ArtifactMetadata.MixinRemapType defaultMixinRemapType) {
+	private static Map<ArtifactRef, ArtifactMetadata> getMetadata(List<ArtifactRef> artifacts, AsyncCache<ArtifactMetadata> cache, ArtifactMetadata.MixinRemapType defaultMixinRemapType, @Nullable Project project, ModPlatform platform) {
 		var futures = new HashMap<ArtifactRef, CompletableFuture<ArtifactMetadata>>();
 
 		for (ArtifactRef artifact : artifacts) {
 			CompletableFuture<ArtifactMetadata> future = cache.get(artifact, () -> {
 				try {
-					return ArtifactMetadata.create(artifact, LoomGradlePlugin.LOOM_VERSION, defaultMixinRemapType);
+					return ArtifactMetadata.create(project, artifact, LoomGradlePlugin.LOOM_VERSION, defaultMixinRemapType, platform);
 				} catch (IOException e) {
 					throw ExceptionUtil.createDescriptiveWrapper(UncheckedIOException::new, "Failed to read metadata from " + artifact.path(), e);
 				}
@@ -304,7 +305,7 @@ public class ModConfigurationRemapper {
 		return (dotIndex == -1) ? fileName : fileName.substring(0, dotIndex);
 	}
 
-	private static Map<ResolvedArtifact, Path> downloadAllSources(Project project, Set<ResolvedArtifact> resolvedArtifacts) {
+	public static Map<ResolvedArtifact, Path> downloadAllSources(Project project, Set<ResolvedArtifact> resolvedArtifacts) {
 		if (isCIBuild()) {
 			return Map.of();
 		}
@@ -380,7 +381,7 @@ public class ModConfigurationRemapper {
 		return s == null || s.isEmpty() ? fallback.get() : s;
 	}
 
-	private static boolean isCIBuild() {
+	public static boolean isCIBuild() {
 		final String loomProperty = System.getProperty("fabric.loom.ci");
 
 		if (loomProperty != null) {

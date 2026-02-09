@@ -33,8 +33,10 @@ import org.objectweb.asm.commons.Remapper;
 import net.fabricmc.classtweaker.api.ClassTweakerReader;
 import net.fabricmc.classtweaker.api.ClassTweakerWriter;
 import net.fabricmc.classtweaker.visitors.ClassTweakerRemapperVisitor;
+import net.fabricmc.loom.util.ModPlatform;
 import net.fabricmc.loom.util.fmj.FabricModJson;
 import net.fabricmc.loom.util.fmj.FabricModJsonFactory;
+import net.fabricmc.loom.util.fmj.ModMetadataFabricModJson;
 
 public class AccessWidenerUtils {
 	/**
@@ -55,12 +57,19 @@ public class AccessWidenerUtils {
 		return writer.getOutput();
 	}
 
-	public static AccessWidenerData readAccessWidenerData(Path inputJar) throws IOException {
-		if (!FabricModJsonFactory.isModJar(inputJar)) {
+	public static AccessWidenerData readAccessWidenerData(Path inputJar, ModPlatform platform) throws IOException {
+		if (!FabricModJsonFactory.isModJar(inputJar, platform)) {
 			return null;
 		}
 
 		final FabricModJson fabricModJson = FabricModJsonFactory.createFromZip(inputJar);
+
+		if (platform.isForgeLike() && !(fabricModJson instanceof ModMetadataFabricModJson)) {
+			// Ignore actual fabric.mod.json files on NeoForge and Forge.
+			// See https://github.com/architectury/architectury-loom/issues/165.
+			return null;
+		}
+
 		final List<String> classTweakers = List.copyOf(fabricModJson.getClassTweakers().keySet());
 
 		if (classTweakers.isEmpty()) {

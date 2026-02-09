@@ -33,10 +33,46 @@ import net.fabricmc.loom.configuration.providers.minecraft.MinecraftVersionMeta;
 import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.download.DownloadException;
 
-public record MojangMappingsSpec(boolean nameSyntheticMembers) implements MappingsSpec<MojangMappingLayer> {
+public record MojangMappingsSpec(SilenceLicenseOption silenceLicense, boolean nameSyntheticMembers) implements MappingsSpec<MojangMappingLayer> {
 	// Keys in dependency manifest
 	private static final String MANIFEST_CLIENT_MAPPINGS = "client_mappings";
 	private static final String MANIFEST_SERVER_MAPPINGS = "server_mappings";
+
+	public MojangMappingsSpec(SilenceLicenseSupplier supplier, boolean nameSyntheticMembers) {
+		this(new SilenceLicenseOption(supplier), nameSyntheticMembers);
+	}
+
+	public MojangMappingsSpec(boolean nameSyntheticMembers) {
+		this(() -> false, nameSyntheticMembers);
+	}
+
+	@FunctionalInterface
+	public interface SilenceLicenseSupplier {
+		boolean isSilent();
+	}
+
+	public record SilenceLicenseOption(SilenceLicenseSupplier supplier) {
+		public boolean isSilent() {
+			return supplier.isSilent();
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) return true;
+			if (!(o instanceof SilenceLicenseOption that)) return false;
+			return isSilent() == that.isSilent();
+		}
+
+		@Override
+		public int hashCode() {
+			return Boolean.hashCode(isSilent());
+		}
+
+		@Override
+		public String toString() {
+			return isSilent() + "";
+		}
+	}
 
 	@Override
 	public MojangMappingLayer createLayer(MappingContext context) {
@@ -64,12 +100,14 @@ public record MojangMappingsSpec(boolean nameSyntheticMembers) implements Mappin
 		}
 
 		return new MojangMappingLayer(
+				context.minecraftVersion(),
 				clientMappings,
 				serverMappings,
 				nameSyntheticMembers(),
 				context.hasProperty(Constants.Properties.DROP_NON_INTERMEDIATE_ROOT_METHODS),
 				context.isUsingIntermediateMappings() ? context.intermediaryTree() : null,
-				context.getLogger()
+				context.getLogger(),
+				silenceLicense()
 		);
 	}
 }

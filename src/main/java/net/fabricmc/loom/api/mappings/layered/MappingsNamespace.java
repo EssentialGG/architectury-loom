@@ -59,6 +59,22 @@ public enum MappingsNamespace {
 	INTERMEDIARY,
 
 	/**
+	 * SRG mappings provided by Minecraft Forge.
+	 *
+	 * <p>They are used as the mapping set in a Forge production environment akin to Fabric's
+	 * {@linkplain #INTERMEDIARY intermediary mappings}.
+	 */
+	SRG,
+
+	/**
+	 * Mojang's official names from their deobfuscation maps.
+	 *
+	 * <p>They are used as the mapping set in a NeoForge production environment akin to Fabric's
+	 * {@linkplain #INTERMEDIARY intermediary mappings}.
+	 */
+	MOJANG,
+
+	/**
 	 * Named mappings are the developer friendly names used to develop mods against.
 	 */
 	NAMED;
@@ -75,6 +91,8 @@ public enum MappingsNamespace {
 		case "clientOfficial" -> CLIENT_OFFICIAL;
 		case "serverOfficial" -> SERVER_OFFICIAL;
 		case "intermediary" -> INTERMEDIARY;
+		case "srg" -> SRG;
+		case "mojang" -> MOJANG;
 		case "named" -> NAMED;
 		default -> null;
 		};

@@ -1,0 +1,42 @@
+package dev.architectury.loom.util;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.function.UnaryOperator;
+
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+
+import net.fabricmc.loom.util.ExceptionUtil;
+
+public final class ClassVisitorUtil {
+	public static void rewriteClassFile(Path path, UnaryOperator<ClassVisitor> visitorFactory) throws IOException {
+		rewriteClassFile(path, false, visitorFactory);
+	}
+
+	public static void rewriteClassFile(Path path, boolean recomputeFrames, UnaryOperator<ClassVisitor> visitorFactory) throws IOException {
+		try {
+			final byte[] inputBytes = Files.readAllBytes(path);
+			final var reader = new ClassReader(inputBytes);
+			final var writer = new ClassWriter(recomputeFrames ? ClassWriter.COMPUTE_FRAMES : 0);
+			final ClassVisitor visitor = visitorFactory.apply(writer);
+
+			// If we're not doing any changes to the file, no need to process it.
+			if (visitor == writer) {
+				return;
+			}
+
+			reader.accept(visitor, 0);
+			final byte[] outputBytes = writer.toByteArray();
+
+			if (!Arrays.equals(inputBytes, outputBytes)) {
+				Files.write(path, outputBytes);
+			}
+		} catch (IOException e) {
+			throw ExceptionUtil.createDescriptiveWrapper(IOException::new, "Failed to patch " + path, e);
+		}
+	}
+}

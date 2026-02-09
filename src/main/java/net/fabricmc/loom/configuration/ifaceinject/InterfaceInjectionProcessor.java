@@ -61,6 +61,7 @@ import net.fabricmc.loom.util.LazyCloseable;
 import net.fabricmc.loom.util.Pair;
 import net.fabricmc.loom.util.ZipUtils;
 import net.fabricmc.loom.util.fmj.FabricModJson;
+import net.fabricmc.loom.util.fmj.ModMetadataFabricModJson;
 import net.fabricmc.mappingio.tree.MappingTree;
 import net.fabricmc.mappingio.tree.MappingTreeView;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
@@ -237,8 +238,12 @@ public abstract class InterfaceInjectionProcessor implements MinecraftJarProcess
 		return comment;
 	}
 
-	private record InjectedInterface(String modId, String className, String ifaceName, @Nullable String generics) {
+	public record InjectedInterface(String modId, String className, String ifaceName, @Nullable String generics) {
 		public static List<InjectedInterface> fromMod(FabricModJson fabricModJson) {
+			if (fabricModJson instanceof ModMetadataFabricModJson modMetadataFmj) {
+				return modMetadataFmj.getModMetadata().getInjectedInterfaces(modMetadataFmj.getId());
+			}
+
 			final String modId = fabricModJson.getId();
 			final JsonElement jsonElement = fabricModJson.getCustom(Constants.CustomModJsonKeys.INJECTED_INTERFACE);
 

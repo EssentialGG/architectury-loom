@@ -62,7 +62,7 @@ public abstract class ValidateAccessWidenerTask extends DefaultTask {
 		final LoomGradleExtension extension = LoomGradleExtension.get(getProject());
 
 		getAccessWidener().convention(extension.getAccessWidenerPath()).finalizeValueOnRead();
-		getTargetJars().from(extension.getMinecraftJarsCollection(MappingsNamespace.NAMED));
+		getTargetJars().from(extension.getMinecraftJarsCollection(MappingsNamespace.NAMED)).finalizeValueOnRead();
 
 		// Ignore outputs for up-to-date checks as there aren't any (so only inputs are checked)
 		getOutputs().upToDateWhen(task -> true);

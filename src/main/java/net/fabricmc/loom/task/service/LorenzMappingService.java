@@ -28,6 +28,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.function.Supplier;
 
+import dev.architectury.loom.mappings.MappingOption;
 import org.cadixdev.lorenz.MappingSet;
 import org.gradle.api.Project;
 import org.gradle.api.provider.Property;
@@ -51,10 +52,13 @@ public final class LorenzMappingService extends Service<LorenzMappingService.Opt
 	}
 
 	public static Provider<Options> createOptions(Project project, MappingConfiguration mappingConfiguration, MappingsNamespace from, MappingsNamespace to) {
+		MappingOption mappingOption = from == MappingsNamespace.SRG || to == MappingsNamespace.SRG ? MappingOption.WITH_SRG
+				: from == MappingsNamespace.MOJANG || to == MappingsNamespace.MOJANG ? MappingOption.WITH_MOJANG : MappingOption.DEFAULT;
+
 		return TYPE.create(project, options -> options.getMappings().set(
 			MappingsService.createOptions(
 				project,
-				mappingConfiguration.tinyMappings,
+					mappingConfiguration.getMappingsPath(mappingOption),
 				from.toString(),
 				to.toString(),
 				false)

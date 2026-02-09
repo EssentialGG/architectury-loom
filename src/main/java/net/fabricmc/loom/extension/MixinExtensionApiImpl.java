@@ -80,9 +80,20 @@ public abstract class MixinExtensionApiImpl implements MixinExtensionAPI {
 		return useMixinAp;
 	}
 
+	protected void checkMixinApEnabled() {
+		if (LoomGradleExtension.get(project).isForge()) {
+			// Arch: We need to access afterEvaluate state in useLegacyMixinAp's convention, so let's not query it.
+			// Otherwise, this extension can't be used in a buildscript without afterEvaluate.
+			// https://github.com/architectury/architectury-loom/issues/242
+			return;
+		}
+
+		if (!getUseLegacyMixinAp().get()) logLegacyMixinAPConfiguration();
+	}
+
 	@Override
 	public Property<String> getRefmapTargetNamespace() {
-		if (!getUseLegacyMixinAp().get()) logLegacyMixinAPConfiguration();
+		checkMixinApEnabled();
 
 		return refmapTargetNamespace;
 	}

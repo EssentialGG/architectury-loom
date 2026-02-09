@@ -1,10 +1,10 @@
 plugins {
-	id 'fabric-loom'
+	id 'gg.essential.loom'
 }
 
 repositories {
 	maven {
-		name = "ldtteam"
+		name = "ParchmentMC"
 		url = "https://maven.parchmentmc.net/"
 	}
 }

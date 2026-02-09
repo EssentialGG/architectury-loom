@@ -48,6 +48,7 @@ import net.fabricmc.loom.util.download.DownloadFactory;
 import net.fabricmc.loom.util.download.GradleDownloadProgressListener;
 import net.fabricmc.loom.util.gradle.ProgressGroup;
 
+// TODO: Reintroduce the progress bar.
 public abstract class DownloadAssetsTask extends AbstractLoomTask {
 	@Input
 	public abstract Property<String> getAssetsHash();

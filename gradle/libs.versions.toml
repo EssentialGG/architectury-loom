@@ -8,7 +8,7 @@ tiny-remapper = "0.12.3"
 clazz-tweaker = "0.1.1"
 mapping-io = "0.8.0"
 lorenz-tiny = "4.0.2"
-mercury = "0.4.3"
+mercury = "0.4.3.18"
 mercury-mixin = "0.2.2"
 loom-native = "0.2.0"
 unpick = "3.0.0-beta.13"
@@ -18,6 +18,17 @@ spotless = "8.0.0"
 test-retry = "1.6.2"
 checkstyle = "12.1.1"
 codenarc = "3.6.0"
+
+# Architectury libraries
+lorenz = "0.5.3"
+mcinjector = "3.8.0"
+opencsv = "5.4"
+forge-diffpatch = "2.0.7"
+night-config = "3.6.6"
+datafixerupper = "6.0.8"
+at = "1.0.1"
+lzma = "1.3"
+jankson = "1.2.3"
 
 [libraries]
 # Loom compile libraries
@@ -34,7 +45,7 @@ fabric-tiny-remapper = { module = "net.fabricmc:tiny-remapper", version.ref = "t
 fabric-clazz-tweaker = { module = "net.fabricmc:class-tweaker", version.ref = "clazz-tweaker" }
 fabric-mapping-io = { module = "net.fabricmc:mapping-io", version.ref = "mapping-io" }
 fabric-lorenz-tiny = { module = "net.fabricmc:lorenz-tiny", version.ref = "lorenz-tiny" }
-fabric-mercury = { module = "net.fabricmc:mercury", version.ref = "mercury" }
+fabric-mercury = { module = "dev.architectury:mercury", version.ref = "mercury" }
 fabric-mercury-mixin = { module = "net.fabricmc:mercurymixin", version.ref = "mercury-mixin" }
 fabric-loom-nativelib = { module = "net.fabricmc:fabric-loom-native", version.ref = "loom-native" }
 fabric-unpick = { module = "net.fabricmc.unpick:unpick", version.ref = "unpick" }
@@ -43,6 +54,17 @@ fabric-unpick-utils = { module = "net.fabricmc.unpick:unpick-format-utils", vers
 # Misc
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-metadata = { module = "org.jetbrains.kotlin:kotlin-metadata-jvm", version.ref = "kotlin" }
+
+# Architectury
+lorenz = { module = "org.cadixdev:lorenz", version.ref = "lorenz" }
+mcinjector = { module = "de.oceanlabs.mcp:mcinjector", version.ref = "mcinjector" }
+opencsv = { module = "com.opencsv:opencsv", version.ref = "opencsv" }
+forge-diffpatch = { module = "net.minecraftforge:DiffPatch", version.ref = "forge-diffpatch" }
+night-config-toml = { module = "com.electronwill.night-config:toml", version.ref = "night-config" }
+datafixerupper = { module = "com.mojang:datafixerupper", version.ref = "datafixerupper" }
+at = { module = "dev.architectury:at", version.ref = "at" }
+lzma = { module = "com.github.jponge:lzma-java", version.ref = "lzma" }
+jankson = { module = "blue.endless:jankson", version.ref = "jankson" }
 
 [plugins]
 kotlin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

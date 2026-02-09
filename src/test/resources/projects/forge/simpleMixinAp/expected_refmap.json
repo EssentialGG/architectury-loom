@@ -1,0 +1,14 @@
+{
+  "mappings": {
+    "net/fabricmc/example/mixin/ExampleMixin": {
+      "init()V": "Lnet/minecraft/client/gui/screens/TitleScreen;m_7856_()V"
+    }
+  },
+  "data": {
+    "named:intermediary": {
+      "net/fabricmc/example/mixin/ExampleMixin": {
+        "init()V": "Lnet/minecraft/client/gui/screens/TitleScreen;m_7856_()V"
+      }
+    }
+  }
+}

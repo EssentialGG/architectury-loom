@@ -28,10 +28,10 @@ import org.gradle.api.Plugin;
 import org.gradle.api.Project;
 
 /**
- * An alias for `net.fabricmc.fabric-loom-remap` to `fabric-loom`.
+ * An alias for `gg.essential.loom-remap` to `gg.essential.loom`.
  */
 public class LoomRemapGradlePlugin implements Plugin<Project> {
-	public static final String NAME = "net.fabricmc.fabric-loom-remap";
+	public static final String NAME = "gg.essential.loom-remap";
 
 	@Override
 	public void apply(Project target) {

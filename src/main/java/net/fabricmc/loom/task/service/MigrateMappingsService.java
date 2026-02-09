@@ -77,6 +77,13 @@ public final class MigrateMappingsService extends Service<MigrateMappingsService
 		classpath.from(extension.getMinecraftJars(MappingsNamespace.INTERMEDIARY));
 		classpath.from(extension.getMinecraftJars(MappingsNamespace.NAMED));
 
+		// Architectury: Same question as above.
+		if (extension.isForge()) {
+			classpath.from(extension.getMinecraftJars(MappingsNamespace.SRG));
+		} else if (extension.isNeoForge()) {
+			classpath.from(extension.getMinecraftJars(MappingsNamespace.MOJANG));
+		}
+
 		return TYPE.create(project, (o) -> {
 			FileCollection targetMappingsFile = getTargetMappingsFile(project, targetMappings.get());
 			o.getSourceMappings().set(MappingsService.createOptionsWithProjectMappings(project, from, to));

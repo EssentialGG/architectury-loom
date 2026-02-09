@@ -26,11 +26,14 @@ package net.fabricmc.loom.configuration.decompile;
 
 import java.util.List;
 
+import dev.architectury.loom.forge.minecraft.MinecraftPatchedProvider;
 import org.gradle.api.Project;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.configuration.providers.minecraft.MinecraftJar;
+import net.fabricmc.loom.configuration.providers.minecraft.MinecraftJarConfiguration;
 import net.fabricmc.loom.configuration.providers.minecraft.mapped.MappedMinecraftProvider;
+import net.fabricmc.loom.task.GenerateForgePatchedSourcesTask;
 import net.fabricmc.loom.task.GenerateSourcesTask;
 import net.fabricmc.loom.util.Constants;
 
@@ -71,5 +74,16 @@ public class SingleJarDecompileConfiguration extends DecompileConfiguration<Mapp
 
 			task.dependsOn(project.getTasks().named("genSourcesWith" + DecompileConfiguration.DEFAULT_DECOMPILER));
 		});
+
+		// TODO: Support for env-only jars?
+		if (extension.isForge() && !extension.isLegacyForge() && extension.getMinecraftJarConfiguration().get() == MinecraftJarConfiguration.MERGED) {
+			project.getTasks().register("genForgePatchedSources", GenerateForgePatchedSourcesTask.class, task -> {
+				task.setDescription("Decompile Minecraft using Forge's toolchain.");
+				task.setGroup(Constants.TaskGroup.FABRIC);
+
+				task.getInputJar().set(MinecraftPatchedProvider.get(project).getMinecraftIntermediateJar().toFile());
+				task.getRuntimeJar().set(minecraftJar.toFile());
+			});
+		}
 	}
 }

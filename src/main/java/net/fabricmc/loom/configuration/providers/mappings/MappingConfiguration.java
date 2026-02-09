@@ -31,16 +31,28 @@ import java.io.Reader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
+import dev.architectury.loom.forge.ForgeMigratedMappingConfiguration;
+import dev.architectury.loom.forge.dependency.SrgProvider;
+import dev.architectury.loom.mappings.ForgeMappingsMerger;
+import dev.architectury.loom.mappings.MCPReader;
+import dev.architectury.loom.mappings.MappingOption;
+import dev.architectury.loom.util.Stopwatch;
 import org.apache.tools.ant.util.StringUtils;
 import org.gradle.api.Project;
+import org.gradle.api.artifacts.Configuration;
 import org.gradle.api.provider.Provider;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -48,6 +60,7 @@ import org.slf4j.LoggerFactory;
 
 import net.fabricmc.loom.LoomGradleExtension;
 import net.fabricmc.loom.LoomGradlePlugin;
+import net.fabricmc.loom.api.mappings.layered.MappingContext;
 import net.fabricmc.loom.configuration.DependencyInfo;
 import net.fabricmc.loom.configuration.providers.mappings.extras.annotations.AnnotationsData;
 import net.fabricmc.loom.configuration.providers.mappings.extras.annotations.AnnotationsLayer;
@@ -59,9 +72,16 @@ import net.fabricmc.loom.util.Constants;
 import net.fabricmc.loom.util.DeletingFileVisitor;
 import net.fabricmc.loom.util.FileSystemUtil;
 import net.fabricmc.loom.util.ZipUtils;
+import net.fabricmc.loom.util.service.ScopedServiceFactory;
 import net.fabricmc.loom.util.service.ServiceFactory;
 import net.fabricmc.mappingio.MappingReader;
+import net.fabricmc.mappingio.MappingVisitor;
+import net.fabricmc.mappingio.MappingWriter;
+import net.fabricmc.mappingio.adapter.MappingDstNsReorder;
+import net.fabricmc.mappingio.adapter.MappingSourceNsSwitch;
 import net.fabricmc.mappingio.format.MappingFormat;
+import net.fabricmc.mappingio.format.tiny.Tiny2FileWriter;
+import net.fabricmc.mappingio.tree.MappingTree;
 import net.fabricmc.stitch.Command;
 import net.fabricmc.stitch.commands.CommandProposeFieldNames;
 
@@ -74,8 +94,13 @@ public class MappingConfiguration {
 	// The mappings that gradle gives us
 	private final Path baseTinyMappings;
 	// The mappings we use in practice
-	public final Path tinyMappings;
+	public Path tinyMappings;
 	public final Path tinyMappingsJar;
+	public Path tinyMappingsWithMojang;
+	public Path tinyMappingsWithSrg;
+	public final Map<String, Path> mixinTinyMappings; // The mixin mappings have other names in intermediary.
+	public final Path srgToNamedSrg; // FORGE: srg to named in srg file format
+	private final Map<MappingOption, Supplier<Path>> mappingOptions;
 	private final Path unpickDefinitions;
 
 	private List<AnnotationsData> annotationsData = List.of();
@@ -83,7 +108,7 @@ public class MappingConfiguration {
 	private UnpickMetadata unpickMetadata;
 	private Map<String, String> signatureFixes;
 
-	private MappingConfiguration(String mappingsIdentifier, Path mappingsWorkingDir) {
+	protected MappingConfiguration(String mappingsIdentifier, Path mappingsWorkingDir) {
 		this.mappingsIdentifier = mappingsIdentifier;
 
 		this.mappingsWorkingDir = mappingsWorkingDir;
@@ -91,6 +116,12 @@ public class MappingConfiguration {
 		this.tinyMappings = mappingsWorkingDir.resolve("mappings.tiny");
 		this.tinyMappingsJar = mappingsWorkingDir.resolve("mappings.jar");
 		this.unpickDefinitions = mappingsWorkingDir.resolve("mappings.unpick");
+		this.tinyMappingsWithSrg = mappingsWorkingDir.resolve("mappings-srg.tiny");
+		this.tinyMappingsWithMojang = mappingsWorkingDir.resolve("mappings-mojang.tiny");
+		this.mixinTinyMappings = new HashMap<>();
+		this.srgToNamedSrg = mappingsWorkingDir.resolve("mappings-srg-named.srg");
+		this.mappingOptions = new EnumMap<>(MappingOption.class);
+		this.mappingOptions.put(MappingOption.DEFAULT, () -> this.tinyMappings);
 	}
 
 	public static MappingConfiguration create(Project project, ServiceFactory serviceFactory, DependencyInfo dependency, MinecraftProvider minecraftProvider) {
@@ -105,10 +136,28 @@ public class MappingConfiguration {
 			}
 		});
 
-		final String mappingsIdentifier = createMappingsIdentifier(mappingsName, version, getMappingsClassifier(dependency, jarInfo.v2()), minecraftProvider.minecraftVersion());
+		final LoomGradleExtension extension = LoomGradleExtension.get(project);
+		String mappingsIdentifier;
+
+		if (extension.isForgeLike()) {
+			mappingsIdentifier = createForgeMappingsIdentifier(extension, mappingsName, version, getMappingsClassifier(dependency, jarInfo.v2()), minecraftProvider.minecraftVersion());
+		} else {
+			mappingsIdentifier = createMappingsIdentifier(mappingsName, version, getMappingsClassifier(dependency, jarInfo.v2()), minecraftProvider.minecraftVersion());
+		}
+
+		if (extension.isQuilt()) {
+			mappingsIdentifier += "-arch-quilt";
+		}
+
 		final Path workingDir = minecraftProvider.dir(mappingsIdentifier).toPath();
 
-		var mappingProvider = new MappingConfiguration(mappingsIdentifier, workingDir);
+		MappingConfiguration mappingProvider;
+
+		if (extension.isForgeLike()) {
+			mappingProvider = new ForgeMigratedMappingConfiguration(mappingsIdentifier, workingDir);
+		} else {
+			mappingProvider = new MappingConfiguration(mappingsIdentifier, workingDir);
+		}
 
 		try {
 			mappingProvider.setup(project, serviceFactory, minecraftProvider, inputJar);
@@ -120,15 +169,35 @@ public class MappingConfiguration {
 		return mappingProvider;
 	}
 
+	public Path getMappingsPath(MappingOption mappingOption) {
+		Supplier<Path> mappingsSupplier = this.mappingOptions.get(mappingOption);
+
+		if (mappingsSupplier == null) {
+			throw new UnsupportedOperationException("Unsupported mapping option: " + mappingOption + ", it is possible that this option is not supported by this project / platform!");
+		} else if (Files.notExists(mappingsSupplier.get())) {
+			throw new UnsupportedOperationException("Mapping option " + mappingOption + " found but file does not exist!");
+		}
+
+		return Objects.requireNonNull(mappingsSupplier.get());
+	}
+
 	public Provider<TinyMappingsService.Options> getMappingsServiceOptions(Project project) {
-		return TinyMappingsService.createOptions(project, Objects.requireNonNull(tinyMappings));
+		return getMappingsServiceOptions(project, MappingOption.DEFAULT);
+	}
+
+	public Provider<TinyMappingsService.Options> getMappingsServiceOptions(Project project, MappingOption mappingOption) {
+		return TinyMappingsService.createOptions(project, Objects.requireNonNull(getMappingsPath(mappingOption)));
 	}
 
 	public TinyMappingsService getMappingsService(Project project, ServiceFactory serviceFactory) {
 		return serviceFactory.get(getMappingsServiceOptions(project));
 	}
 
-	private void setup(Project project, ServiceFactory serviceFactory, MinecraftProvider minecraftProvider, Path inputJar) throws IOException {
+	public TinyMappingsService getMappingsService(Project project, ServiceFactory serviceFactory, MappingOption mappingOption) {
+		return serviceFactory.get(getMappingsServiceOptions(project, mappingOption));
+	}
+
+	protected void setup(Project project, ServiceFactory serviceFactory, MinecraftProvider minecraftProvider, Path inputJar) throws IOException {
 		if (minecraftProvider.refreshDeps()) {
 			cleanWorkingDirectory(mappingsWorkingDir);
 		}
@@ -136,8 +205,8 @@ public class MappingConfiguration {
 		if (Files.notExists(tinyMappings) || minecraftProvider.refreshDeps()) {
 			storeMappings(project, serviceFactory, minecraftProvider, inputJar);
 		} else {
-			try (FileSystem fileSystem = FileSystems.newFileSystem(inputJar, (ClassLoader) null)) {
-				extractExtras(fileSystem);
+			try (FileSystemUtil.Delegate fileSystem = FileSystemUtil.getJarFileSystem(inputJar, false)) {
+				extractExtras(fileSystem.get());
 			}
 		}
 
@@ -147,7 +216,42 @@ public class MappingConfiguration {
 		}
 	}
 
-	public void applyToProject(Project project, DependencyInfo dependency) {
+	public void setupPost(Project project) throws IOException {
+		LoomGradleExtension extension = LoomGradleExtension.get(project);
+
+		if (extension.isNeoForge()) {
+			this.mappingOptions.put(MappingOption.WITH_MOJANG, () -> this.tinyMappingsWithMojang);
+
+			// Generate the Mojmap-merged mappings if needed.
+			// Note that this needs to happen before manipulateMappings for FieldMigratedMappingConfiguration.
+			if (Files.notExists(tinyMappingsWithMojang) || extension.refreshDeps()) {
+				mergeMojang(project, tinyMappings, tinyMappingsWithMojang);
+			}
+		}
+
+		if (extension.shouldGenerateSrgTiny()) {
+			this.mappingOptions.put(MappingOption.WITH_SRG, () -> this.tinyMappingsWithSrg);
+
+			if (extension.isForge() && extension.getForgeProvider().usesMojangAtRuntime()) {
+				this.mappingOptions.put(MappingOption.WITH_MOJANG, () -> this.tinyMappingsWithSrg);
+			}
+
+			if (Files.notExists(tinyMappingsWithSrg) || extension.refreshDeps()) {
+				if (extension.isForge() && extension.getForgeProvider().usesMojangAtRuntime()) {
+					Path tmp = Files.createTempFile("mappings", ".tiny");
+					mergeMojang(project, tinyMappings, tmp);
+					mergeSrg(project, tmp, tinyMappingsWithSrg);
+					Files.deleteIfExists(tmp);
+				} else {
+					mergeSrg(project, tinyMappings, tinyMappingsWithSrg);
+				}
+			}
+		}
+
+		manipulateMappings(project, tinyMappingsJar);
+	}
+
+	public void applyToProject(Project project, DependencyInfo dependency) throws IOException {
 		if (unpickMetadata != null) {
 			if (unpickMetadata.hasConstants()) {
 				String notation = switch (unpickMetadata) {
@@ -163,7 +267,75 @@ public class MappingConfiguration {
 			}
 		}
 
+		LoomGradleExtension extension = LoomGradleExtension.get(project);
+
+		if (extension.isForge()) {
+			if (!extension.shouldGenerateSrgTiny()) {
+				throw new IllegalStateException("We have to generate srg tiny in a forge environment!");
+			}
+
+			if (Files.notExists(srgToNamedSrg) || extension.refreshDeps()) {
+				try (var serviceFactory = new ScopedServiceFactory()) {
+					TinyMappingsService mappingsService = getMappingsService(project, serviceFactory, MappingOption.WITH_SRG);
+
+					try (MappingWriter writer = MappingWriter.create(srgToNamedSrg, MappingFormat.SRG_FILE)) {
+						MappingVisitor visitor = new MappingSourceNsSwitch(new MappingDstNsReorder(writer, "named"), "srg");
+						mappingsService.getMappingTree().accept(visitor);
+					}
+				}
+			}
+		}
+
 		project.getDependencies().add(Constants.Configurations.MAPPINGS_FINAL, project.files(tinyMappingsJar.toFile()));
+	}
+
+	public static Path getRawSrgFile(Project project) throws IOException {
+		LoomGradleExtension extension = LoomGradleExtension.get(project);
+
+		if (extension.getSrgProvider().isTsrgV2()) {
+			return extension.getSrgProvider().getMergedMojangTrimmed();
+		}
+
+		return extension.getSrgProvider().getSrg();
+	}
+
+	public static Path getMojmapSrgFileIfPossible(Project project) {
+		try {
+			LoomGradleExtension extension = LoomGradleExtension.get(project);
+			return SrgProvider.getMojmapTsrg2(project, extension);
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+	}
+
+	private static void mergeMojang(Project project, Path source, Path target) throws IOException {
+		final Stopwatch stopwatch = Stopwatch.createStarted();
+		final MappingContext context = new GradleMappingContext(project, "tmp-mojang");
+
+		try (Tiny2FileWriter writer = new Tiny2FileWriter(Files.newBufferedWriter(target, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING), false)) {
+			ForgeMappingsMerger.mergeMojang(context, source, null, true).accept(writer);
+		}
+
+		project.getLogger().info(":merged mojang mappings in {}", stopwatch.stop());
+	}
+
+	private static void mergeSrg(Project project, Path source, Path target) throws IOException {
+		Stopwatch stopwatch = Stopwatch.createStarted();
+		LoomGradleExtension extension = LoomGradleExtension.get(project);
+
+		// FIXME why is this special case necessary?
+		ForgeMappingsMerger.ExtraMappings extraMappings = extension.isLegacyForge()
+				? null
+				: ForgeMappingsMerger.ExtraMappings.ofMojmapTsrg(getMojmapSrgFileIfPossible(project));
+
+		try (Tiny2FileWriter writer = new Tiny2FileWriter(Files.newBufferedWriter(target, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING), false)) {
+			ForgeMappingsMerger.mergeSrg(getRawSrgFile(project), source, extraMappings, true).accept(writer);
+		}
+
+		project.getLogger().info(":merged srg mappings in " + stopwatch.stop());
+	}
+
+	protected void manipulateMappings(Project project, Path mappingsJar) throws IOException {
 	}
 
 	private static String getMappingsClassifier(DependencyInfo dependency, boolean isV2) {
@@ -178,6 +350,16 @@ public class MappingConfiguration {
 
 	private void storeMappings(Project project, ServiceFactory serviceFactory, MinecraftProvider minecraftProvider, Path inputJar) throws IOException {
 		LOGGER.info(":extracting " + inputJar.getFileName());
+
+		if (isMCP(inputJar)) {
+			try {
+				readAndMergeMCP(project, serviceFactory, minecraftProvider, inputJar);
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+
+			return;
+		}
 
 		try (FileSystemUtil.Delegate delegate = FileSystemUtil.getJarFileSystem(inputJar)) {
 			extractMappings(delegate.fs(), baseTinyMappings);
@@ -196,6 +378,16 @@ public class MappingConfiguration {
 				Files.copy(baseTinyMappings, tinyMappings, StandardCopyOption.REPLACE_EXISTING);
 			}
 		} else {
+			if (LoomGradleExtension.get(project).isForgeLike()) {
+				// (2022-09-11) This is due to ordering issues.
+				// To complete V1 mappings, we need the full MC jar.
+				// On Forge, producing the full MC jar needs the list of all Forge dependencies
+				//   -> needs our remapped dependency from srg to named class names (1.19+)
+				//   -> needs the mappings
+				//   = a circular dependency
+				throw new UnsupportedOperationException("Forge cannot be used with V1 mappings!");
+			}
+
 			final List<Path> minecraftJars = minecraftProvider.getMinecraftJars();
 
 			if (minecraftJars.size() != 1) {
@@ -209,9 +401,45 @@ public class MappingConfiguration {
 		}
 	}
 
+	private void readAndMergeMCP(Project project, ServiceFactory serviceFactory, MinecraftProvider minecraftProvider, Path mcpJar) throws Exception {
+		LoomGradleExtension extension = LoomGradleExtension.get(project);
+		IntermediateMappingsService intermediateMappingsService = serviceFactory.get(IntermediateMappingsService.createOptions(project, minecraftProvider));
+		Path intermediaryTinyPath = intermediateMappingsService.getIntermediaryTiny();
+		SrgProvider provider = extension.getSrgProvider();
+
+		if (provider == null) {
+			if (!extension.shouldGenerateSrgTiny()) {
+				Configuration srg = project.getConfigurations().maybeCreate(Constants.Configurations.SRG);
+				srg.setTransitive(false);
+			}
+
+			provider = new SrgProvider(project);
+			project.getDependencies().add(provider.getTargetConfig(), "de.oceanlabs.mcp:mcp_config:" + extension.getMinecraftProvider().minecraftVersion());
+			Configuration configuration = project.getConfigurations().getByName(provider.getTargetConfig());
+			provider.provide(DependencyInfo.create(project, configuration.getDependencies().iterator().next(), configuration));
+			extension.getDependencyProviders().addProvider(provider);
+		}
+
+		Path srgPath = getRawSrgFile(project);
+		MappingTree tree = new MCPReader(intermediaryTinyPath, srgPath).read(mcpJar);
+
+		try (MappingWriter writer = MappingWriter.create(tinyMappings, MappingFormat.TINY_2_FILE)) {
+			tree.accept(writer);
+		}
+	}
+
+	private boolean isMCP(Path path) throws IOException {
+		try (FileSystemUtil.Delegate fs = FileSystemUtil.getJarFileSystem(path, false)) {
+			return Files.exists(fs.getPath("fields.csv")) && Files.exists(fs.getPath("methods.csv"));
+		}
+	}
+
 	private static boolean areMappingsV2(Path path) throws IOException {
 		try (BufferedReader reader = Files.newBufferedReader(path)) {
 			return MappingReader.detectFormat(reader) == MappingFormat.TINY_2_FILE;
+		} catch (NoSuchFileException e) {
+			// TODO: just check the mappings version when Parser supports V1 in readMetadata()
+			return false;
 		}
 	}
 
@@ -300,10 +528,17 @@ public class MappingConfiguration {
 		return mappingsWorkingDir;
 	}
 
-	private static String createMappingsIdentifier(String mappingsName, String version, String classifier, String minecraftVersion) {
+	protected static String createMappingsIdentifier(String mappingsName, String version, String classifier, String minecraftVersion) {
 		//          mappingsName      . mcVersion . version        classifier
 		// Example: net.fabricmc.yarn . 1_16_5    . 1.16.5+build.5 -v2
 		return mappingsName + "." + minecraftVersion.replace(' ', '_').replace('.', '_').replace('-', '_') + "." + version + classifier;
+	}
+
+	protected static String createForgeMappingsIdentifier(LoomGradleExtension extension, String mappingsName, String version, String classifier, String minecraftVersion) {
+		final String base = createMappingsIdentifier(mappingsName, version, classifier, minecraftVersion);
+		final String platform = extension.getPlatform().get().id();
+		final String forgeVersion = extension.getForgeProvider().getVersion().getCombined();
+		return base + "-" + platform + "-" + forgeVersion;
 	}
 
 	public String mappingsIdentifier() {
@@ -329,5 +564,42 @@ public class MappingConfiguration {
 	@Nullable
 	public Map<String, String> getSignatureFixes() {
 		return signatureFixes;
+	}
+
+	public Path getReplacedTarget(LoomGradleExtension loom, String namespace) {
+		if (namespace.equals("intermediary")) return getPlatformMappingFile(loom);
+
+		return mixinTinyMappings.computeIfAbsent(namespace, k -> {
+			Path path = mappingsWorkingDir.resolve("mappings-mixin-" + namespace + ".tiny");
+
+			try {
+				if (Files.notExists(path) || loom.refreshDeps()) {
+					List<String> lines = new ArrayList<>(Files.readAllLines(getPlatformMappingFile(loom)));
+					lines.set(0, lines.get(0).replace("intermediary", "yraidemretni").replace(namespace, "intermediary"));
+					Files.deleteIfExists(path);
+					Files.write(path, lines);
+				}
+
+				return path;
+			} catch (Exception e) {
+				throw new RuntimeException(e);
+			}
+		});
+	}
+
+	/**
+	 * The mapping file that is specific to the platform settings.
+	 * It contains SRG (Forge/common) or Mojang mappings (NeoForge) as needed.
+	 *
+	 * @return the platform mapping file path
+	 */
+	public Path getPlatformMappingFile(LoomGradleExtension extension) {
+		if (extension.shouldGenerateSrgTiny()) {
+			return tinyMappingsWithSrg;
+		} else if (extension.isNeoForge()) {
+			return tinyMappingsWithMojang;
+		} else {
+			return tinyMappings;
+		}
 	}
 }

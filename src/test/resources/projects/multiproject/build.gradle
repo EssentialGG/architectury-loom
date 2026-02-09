@@ -1,13 +1,13 @@
 plugins {
 	id "java"
 	id "java-library"
-	id 'fabric-loom' apply false
+	id 'gg.essential.loom' apply false
 }
 
 allprojects {
 	if (it.path == ":javalib") return;
 
-	apply plugin: "fabric-loom"
+	apply plugin: "gg.essential.loom"
 
 	version = "1.0.0"
 

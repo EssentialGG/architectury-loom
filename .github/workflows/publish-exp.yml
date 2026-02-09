@@ -1,8 +1,5 @@
 name: Publish
-on:
-  push:
-    branches:
-      - 'exp/**'
+on: workflow_dispatch
 
 permissions:
   contents: write
