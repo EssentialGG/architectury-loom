@@ -24,6 +24,8 @@
 
 package net.fabricmc.loom.test.integration
 
+import java.util.stream.Collectors
+
 import spock.lang.Specification
 import spock.lang.Unroll
 
@@ -119,8 +121,11 @@ class LayeredMappingsTest extends Specification implements GradleProjectTestTrai
 		gradle.buildGradle << '''
 			loom {
 				noIntermediateMappings()
+				productionNamespace.set("official")
 			}
 		'''
+		// Remove fabric-api, it includes intermediary-mapped access wideners
+		gradle.buildGradle.text = gradle.buildGradle.text.lines().filter { !it.contains("fabric-api") }.collect(Collectors.joining("\n"))
 
 		when:
 		def result = gradle.run(task: "build")
