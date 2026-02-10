@@ -46,7 +46,7 @@ class PatchedDecompileTest extends Specification implements GradleProjectTestTra
 
 		when:
 		// TODO: Enable configuration cache if/when the task supports it
-		def result = gradle.run(task: "genForgePatchedSources", configurationCache: false)
+		def result = gradle.run(task: "genForgePatchedSources", configurationCache: false, moreMemory: true)
 
 		then:
 		result.task(":genForgePatchedSources").outcome == SUCCESS

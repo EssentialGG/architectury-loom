@@ -178,6 +178,10 @@ trait GradleProjectTestTrait {
 				args << "-Dorg.gradle.unsafe.isolated-projects=true"
 			}
 
+			if (options.moreMemory) {
+				args << "-Dorg.gradle.jvmargs=-Xmx2G"
+			}
+
 			if (options.configureOnDemand) {
 				args << "--configure-on-demand"
 			}
