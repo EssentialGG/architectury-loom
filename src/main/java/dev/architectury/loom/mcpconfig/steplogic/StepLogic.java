@@ -62,7 +62,7 @@ public abstract class StepLogic<O extends Service.Options> extends Service<O> {
 		Path setOutput(Path output);
 		Path cache() throws IOException;
 		/** Mappings extracted from {@code data.mappings} in the MCPConfig JSON. */
-		Path mappings();
+		@Nullable Path mappings();
 		String resolve(ConfigValue value);
 		DownloadBuilder downloadBuilder(String url);
 		void javaexec(Action<? super ForgeToolExecutor.Settings> configurator);

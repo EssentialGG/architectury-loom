@@ -31,6 +31,7 @@ import java.util.Map;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Data extracted from the MCPConfig JSON file.
@@ -45,7 +46,7 @@ import com.google.gson.JsonObject;
 public record McpConfigData(
 		String version,
 		JsonObject data,
-		String mappingsPath,
+		@Nullable String mappingsPath,
 		boolean official,
 		Map<String, List<McpConfigStep>> steps,
 		Map<String, McpConfigFunction> functions
@@ -53,8 +54,8 @@ public record McpConfigData(
 	public static McpConfigData fromJson(JsonObject json) {
 		String version = json.get("version").getAsString();
 		JsonObject data = json.getAsJsonObject("data");
-		String mappingsPath = data.get("mappings").getAsString();
-		boolean official = json.has("official") && json.getAsJsonPrimitive("official").getAsBoolean();
+		String mappingsPath = json.has("mappings") ? data.get("mappings").getAsString() : null;
+		boolean official = mappingsPath == null || json.has("official") && json.getAsJsonPrimitive("official").getAsBoolean();
 
 		JsonObject stepsJson = json.getAsJsonObject("steps");
 		Map<String, List<McpConfigStep>> steps = new HashMap<>();

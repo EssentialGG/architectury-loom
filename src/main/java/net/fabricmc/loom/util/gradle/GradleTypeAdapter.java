@@ -54,6 +54,8 @@ public class GradleTypeAdapter implements TypeAdapterFactory {
 
 		if (FileCollection.class.isAssignableFrom(rawClass)) {
 			return new FileCollectionTypeAdapter();
+		} else if (File.class.isAssignableFrom(rawClass)) {
+			return new FileTypeAdapter();
 		} else if (RegularFileProperty.class.isAssignableFrom(rawClass)) {
 			return new RegularFilePropertyTypeAdapter();
 		} else if (DirectoryProperty.class.isAssignableFrom(rawClass)) {
@@ -104,6 +106,13 @@ public class GradleTypeAdapter implements TypeAdapterFactory {
 			}
 
 			out.endArray();
+		}
+	}
+
+	private static final class FileTypeAdapter<T extends File> extends WriteOnlyTypeAdapter<T> {
+		@Override
+		public void write(JsonWriter out, T file) throws IOException {
+			out.value(file.getAbsolutePath());
 		}
 	}
 

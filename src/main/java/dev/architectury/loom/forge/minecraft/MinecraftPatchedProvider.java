@@ -163,6 +163,10 @@ public class MinecraftPatchedProvider {
 		minecraftPatchedIntermediateAtJar = forgeWorkingDir.resolve("minecraft-" + type.id + "-" + intermediateId + "-at-patched.jar");
 		minecraftPatchedJar = forgeWorkingDir.resolve("minecraft-" + type.id + "-patched.jar");
 		minecraftClientExtra = forgeWorkingDir.resolve("client-extra.jar");
+
+		if (getExtension().disableObfuscation()) {
+			minecraftPatchedJar = minecraftPatchedIntermediateAtJar;
+		}
 	}
 
 	private void cleanAllCache() throws IOException {
@@ -235,6 +239,10 @@ public class MinecraftPatchedProvider {
 			fillClientExtraJar(serviceFactory);
 		}
 
+		if (getExtension().disableObfuscation()) {
+			DependencyProvider.addDependency(project, getForgeJar(), Constants.Configurations.FORGE_EXTRA);
+		}
+
 		DependencyProvider.addDependency(project, minecraftClientExtra, Constants.Configurations.FORGE_EXTRA);
 	}
 
@@ -246,7 +254,13 @@ public class MinecraftPatchedProvider {
 
 		try (var tempFiles = new TempFiles(); var serviceFactory = new ScopedServiceFactory()) {
 			McpExecutorBuilder builder = createMcpExecutor(tempFiles.directory("loom-mcp"));
-			builder.enqueue("rename");
+
+			if (getExtension().disableObfuscation()) {
+				builder.enqueue("preProcessJar");
+			} else {
+				builder.enqueue("rename");
+			}
+
 			McpExecutor executor = serviceFactory.get(builder.build());
 			Path output = executor.execute();
 			Files.copy(output, minecraftIntermediateJar);
@@ -300,7 +314,13 @@ public class MinecraftPatchedProvider {
 	// The manifest includes a Minecraft-Dists attribute that specifies the dists in the current dev env,
 	// as well as Minecraft-Dist attributes on every dist-only file.
 	private void generateNeoForgeDistManifest(ServiceFactory serviceFactory, Path manifestPath) throws IOException {
-		MemoryMappingTree mappings = getMappingTree(serviceFactory);
+		MemoryMappingTree mappings;
+
+		if (getExtension().disableObfuscation()) {
+			mappings = new MemoryMappingTree();
+		} else {
+			mappings = getMappingTree(serviceFactory);
+		}
 
 		Manifest manifest = new Manifest();
 		manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -487,6 +507,11 @@ public class MinecraftPatchedProvider {
 	}
 
 	private void remapPatchedJar(ServiceFactory serviceFactory) throws Exception {
+		if (getExtension().disableObfuscation()) {
+			applyLoomPatchVersion(minecraftPatchedJar);
+			return;
+		}
+
 		logger.lifecycle(":remapping minecraft (TinyRemapper, srg -> official)");
 		Path mcInput = minecraftPatchedIntermediateAtJar;
 		Path mcOutput = minecraftPatchedJar;

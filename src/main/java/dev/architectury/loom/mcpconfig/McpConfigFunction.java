@@ -27,6 +27,7 @@ package dev.architectury.loom.mcpconfig;
 import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.google.gson.JsonArray;
@@ -40,27 +41,35 @@ import org.jspecify.annotations.Nullable;
 /**
  * An executable program for {@linkplain McpConfigStep steps}.
  *
- * @param version the Gradle-style dependency string of the program
+ * @param classpath the Gradle-style dependency strings of the program
  * @param args    the command-line arguments
  * @param jvmArgs the JVM arguments
  * @param repo    the Maven repository to download the dependency from, or {@code null} if not specified
  */
-public record McpConfigFunction(String version, List<ConfigValue> args, List<ConfigValue> jvmArgs, @Nullable String repo) implements Serializable {
+public record McpConfigFunction(@Nullable String mainClass, List<String> classpath, List<ConfigValue> args, List<ConfigValue> jvmArgs, @Nullable String repo) implements Serializable {
+	private static final String MAIN_CLASS_KEY = "main_class";
+	private static final String CLASSPATH_KEY = "classpath";
 	private static final String VERSION_KEY = "version";
 	private static final String ARGS_KEY = "args";
 	private static final String JVM_ARGS_KEY = "jvmargs";
 	private static final String REPO_KEY = "repo";
 
-	public Path download(StepLogic.SetupContext executionContext) throws IOException {
-		if (repo != null) {
-			return executionContext.downloadFile(getDownloadUrl());
-		} else {
-			return executionContext.downloadDependency(version);
+	public List<Path> download(StepLogic.SetupContext executionContext) throws IOException {
+		List<Path> paths = new ArrayList<>(classpath.size());
+
+		for (String dependency : classpath) {
+			if (repo != null) {
+				paths.add(executionContext.downloadFile(getDownloadUrl(dependency)));
+			} else {
+				paths.add(executionContext.downloadDependency(dependency));
+			}
 		}
+
+		return paths;
 	}
 
-	private String getDownloadUrl() {
-		String[] parts = version.split(":");
+	private String getDownloadUrl(String dependency) {
+		String[] parts = dependency.split(":");
 		StringBuilder builder = new StringBuilder();
 		builder.append(repo);
 		// Group:
@@ -82,12 +91,22 @@ public record McpConfigFunction(String version, List<ConfigValue> args, List<Con
 	}
 
 	public static McpConfigFunction fromJson(JsonObject json) {
-		String version = json.get(VERSION_KEY).getAsString();
+		String mainClass = json.has(MAIN_CLASS_KEY) ? json.get(MAIN_CLASS_KEY).getAsString() : null;
+		List<String> classpath = new ArrayList<>();
+
+		if (json.has(CLASSPATH_KEY)) {
+			for (JsonElement dependency : json.getAsJsonArray(CLASSPATH_KEY)) {
+				classpath.add(dependency.getAsString());
+			}
+		} else {
+			classpath.add(json.get(VERSION_KEY).getAsString());
+		}
+
 		List<ConfigValue> args = json.has(ARGS_KEY) ? configValuesFromJson(json.getAsJsonArray(ARGS_KEY)) : List.of();
 		List<ConfigValue> jvmArgs = json.has(JVM_ARGS_KEY) ? configValuesFromJson(json.getAsJsonArray(JVM_ARGS_KEY)) : List.of();
 		JsonElement repoJson = json.get(REPO_KEY);
-		@Nullable String repo = repoJson.isJsonPrimitive() ? repoJson.getAsString() : null;
-		return new McpConfigFunction(version, args, jvmArgs, repo);
+		@Nullable String repo = repoJson != null && repoJson.isJsonPrimitive() ? repoJson.getAsString() : null;
+		return new McpConfigFunction(mainClass, classpath, args, jvmArgs, repo);
 	}
 
 	private static List<ConfigValue> configValuesFromJson(JsonArray json) {

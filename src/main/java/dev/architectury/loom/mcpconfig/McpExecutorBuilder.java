@@ -188,13 +188,17 @@ public final class McpExecutorBuilder {
 
 		return McpExecutor.TYPE.create(project, options -> {
 			final LoomGradleExtension extension = LoomGradleExtension.get(project);
+			final Path mappings = extension.getMcpConfigProvider().getMappings();
 
 			for (McpConfigStep step : toExecute) {
 				options.getStepLogicOptions().put(step.name(), getStepLogic(step.name(), step.type()));
 			}
 
+			if (mappings != null) {
+				options.getMappings().set(mappings.toFile());
+			}
+
 			options.getStepsToExecute().set(toExecute);
-			options.getMappings().set(extension.getMcpConfigProvider().getMappings().toFile());
 			options.getInitialConfig().set(config);
 			options.getOffline().set(project.getGradle().getStartParameter().isOffline());
 			options.getManualRefreshDeps().set(extension.manualRefreshDeps());

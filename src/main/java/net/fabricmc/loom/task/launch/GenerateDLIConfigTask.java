@@ -247,7 +247,7 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 					.property("loader.enable_quilt_mod_json5_in_dev_env", "true");
 		}
 
-		if (platform.isForgeLike()) {
+		if (platform.isForgeLike() && !getExtension().disableObfuscation()) {
 			// Find the mapping files for Unprotect to use for figuring out
 			// which classes are from Minecraft.
 			String unprotectMappings = getMappingJars()
@@ -267,17 +267,6 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 
 			if (platform == ModPlatform.FORGE) {
 				final ForgeInputs forgeInputs = Objects.requireNonNull(getForgeInputs().getOrNull());
-				final List<String> dataGenMods = forgeInputs.dataGenMods();
-
-				// Only apply the hardcoded data arguments if the deprecated data generator API is being used.
-				if (!dataGenMods.isEmpty()) {
-					launchConfig
-							.argument("data", "--all")
-							.argument("data", "--mod")
-							.argument("data", String.join(",", dataGenMods))
-							.argument("data", "--output")
-							.argument("data", forgeInputs.legacyDataGenDir());
-				}
 
 				launchConfig.property("mixin.env.remapRefMap", "true");
 
@@ -288,6 +277,23 @@ public abstract class GenerateDLIConfigTask extends AbstractLoomTask {
 							.property("architectury.mixinRemapper.mappingsPath", mappingsPath);
 				} else {
 					launchConfig.property("net.minecraftforge.gradle.GradleStart.srg.srg-mcp", forgeInputs.srgToNamedSrg());
+				}
+			}
+		}
+
+		if (platform.isForgeLike()) {
+			if (platform == ModPlatform.FORGE) {
+				final ForgeInputs forgeInputs = Objects.requireNonNull(getForgeInputs().getOrNull());
+				final List<String> dataGenMods = forgeInputs.dataGenMods();
+
+				// Only apply the hardcoded data arguments if the deprecated data generator API is being used.
+				if (!dataGenMods.isEmpty()) {
+					launchConfig
+							.argument("data", "--all")
+							.argument("data", "--mod")
+							.argument("data", String.join(",", dataGenMods))
+							.argument("data", "--output")
+							.argument("data", forgeInputs.legacyDataGenDir());
 				}
 
 				Set<String> mixinConfigs = forgeInputs.mixinConfigs();

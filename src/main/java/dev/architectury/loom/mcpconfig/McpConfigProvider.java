@@ -34,6 +34,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import dev.architectury.loom.forge.dependency.DependencyProvider;
 import org.gradle.api.Project;
+import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.loom.configuration.DependencyInfo;
 import net.fabricmc.loom.util.Constants;
@@ -116,8 +117,9 @@ public class McpConfigProvider extends DependencyProvider {
 		configJson = unpacked.resolve("config.json");
 	}
 
-	public Path getMappings() {
-		return unpacked.resolve(getMappingsPath());
+	public @Nullable Path getMappings() {
+		String mappingsPath = getMappingsPath();
+		return mappingsPath != null ? unpacked.resolve(mappingsPath) : null;
 	}
 
 	public Path getUnpackedZip() {
@@ -132,7 +134,7 @@ public class McpConfigProvider extends DependencyProvider {
 		return data.official();
 	}
 
-	public String getMappingsPath() {
+	public @Nullable String getMappingsPath() {
 		return data.mappingsPath();
 	}
 

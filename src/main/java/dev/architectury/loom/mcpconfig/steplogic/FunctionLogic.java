@@ -27,11 +27,13 @@ package dev.architectury.loom.mcpconfig.steplogic;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
+import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 
 import dev.architectury.loom.mcpconfig.McpConfigFunction;
-import org.gradle.api.file.RegularFileProperty;
+import org.gradle.api.provider.ListProperty;
 import org.gradle.api.provider.Property;
 import org.gradle.api.provider.Provider;
 import org.gradle.api.tasks.Input;
@@ -53,20 +55,20 @@ public final class FunctionLogic extends StepLogic<FunctionLogic.Options> {
 		Property<McpConfigFunction> getFunction();
 
 		@InputFile
-		RegularFileProperty getToolJar();
+		ListProperty<File> getToolJars();
 	}
 
 	public static Provider<Options> createOptions(SetupContext context, McpConfigFunction function) {
 		return TYPE.create(context.project(), options -> {
 			options.getFunction().set(function);
-			final Provider<File> jar = context.project().provider(Lazy.of(() -> {
+			final Provider<List<File>> jars = context.project().provider(Lazy.of(() -> {
 				try {
-					return function.download(context).toFile();
+					return function.download(context).stream().map(Path::toFile).toList();
 				} catch (IOException e) {
 					throw new UncheckedIOException(e);
 				}
 			})::get);
-			options.getToolJar().set(context.project().getLayout().file(jar));
+			options.getToolJars().set(jars);
 		});
 	}
 
@@ -82,17 +84,21 @@ public final class FunctionLogic extends StepLogic<FunctionLogic.Options> {
 		context.setOutput("output.jar");
 
 		McpConfigFunction function = getOptions().getFunction().get();
-		File jar = getOptions().getToolJar().get().getAsFile();
+		List<File> jars = getOptions().getToolJars().get();
 		String mainClass;
 
-		try (JarFile jarFile = new JarFile(jar)) {
-			mainClass = jarFile.getManifest().getMainAttributes().getValue(Attributes.Name.MAIN_CLASS);
-		} catch (IOException e) {
-			throw new IOException("Could not determine main class for " + jar.getAbsolutePath(), e);
+		if (function.mainClass() != null) {
+			mainClass = function.mainClass();
+		} else {
+			try (JarFile jarFile = new JarFile(jars.getFirst())) {
+				mainClass = jarFile.getManifest().getMainAttributes().getValue(Attributes.Name.MAIN_CLASS);
+			} catch (IOException e) {
+				throw new IOException("Could not determine main class for " + jars.getFirst().getAbsolutePath(), e);
+			}
 		}
 
 		context.javaexec(spec -> {
-			spec.classpath(jar);
+			spec.classpath(jars);
 			spec.getMainClass().set(mainClass);
 			spec.args(context.resolve(function.args()));
 			spec.jvmArgs(context.resolve(function.jvmArgs()));
@@ -101,6 +107,6 @@ public final class FunctionLogic extends StepLogic<FunctionLogic.Options> {
 
 	@Override
 	public String getDisplayName(String stepName) {
-		return stepName + " with " + getOptions().getFunction().get().version();
+		return stepName + " with " + getOptions().getFunction().get().classpath();
 	}
 }

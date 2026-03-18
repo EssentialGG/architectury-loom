@@ -51,6 +51,7 @@ import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFile;
 import org.gradle.api.tasks.Internal;
 import org.gradle.api.tasks.Nested;
+import org.gradle.api.tasks.Optional;
 import org.jspecify.annotations.Nullable;
 
 import net.fabricmc.loom.util.download.Download;
@@ -92,6 +93,7 @@ public final class McpExecutor extends Service<McpExecutor.Options> {
 		 * Mappings extracted from {@code data.mappings} in the MCPConfig JSON.
 		 */
 		@InputFile
+		@Optional
 		RegularFileProperty getMappings();
 
 		/**
@@ -216,8 +218,8 @@ public final class McpExecutor extends Service<McpExecutor.Options> {
 		}
 
 		@Override
-		public Path mappings() {
-			return getOptions().getMappings().get().getAsFile().toPath();
+		public @Nullable Path mappings() {
+			return getOptions().getMappings().isPresent() ? getOptions().getMappings().get().getAsFile().toPath() : null;
 		}
 
 		@Override

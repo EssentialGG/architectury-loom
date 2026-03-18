@@ -175,7 +175,7 @@ public abstract class CompileConfiguration implements Runnable {
 				// TODO: Find a better place for this?
 				//   This has to be after dependencyManager.handleDependencies() above
 				//   because of https://github.com/architectury/architectury-loom/issues/72.
-				if (!ModConfigurationRemapper.isCIBuild()) {
+				if (!ModConfigurationRemapper.isCIBuild() && !extension.disableObfuscation()) {
 					try {
 						ForgeSourcesService.addForgeSourcesDuringProjectConfiguration(getProject(), configContext.serviceFactory());
 					} catch (IOException e) {
@@ -230,7 +230,7 @@ public abstract class CompileConfiguration implements Runnable {
 
 		if (extension.isForgeLike() && extension.disableObfuscation()) {
 			// TODO: Allow setting up Forge and NeoForge without obfuscation
-			throw new UnsupportedOperationException("Using %s without obfuscation is not supported!".formatted(extension.getPlatform().get().displayName()));
+			//throw new UnsupportedOperationException("Using %s without obfuscation is not supported!".formatted(extension.getPlatform().get().displayName()));
 		}
 
 		extension.setMinecraftProvider(minecraftProvider);
@@ -265,6 +265,14 @@ public abstract class CompileConfiguration implements Runnable {
 
 			mappingConfiguration.setupPost(project);
 			mappingConfiguration.applyToProject(getProject(), mappingsDep);
+		} else {
+			setupDependencyProviders(project, extension);
+
+			if (extension.isForgeLike()) {
+				ForgeLibrariesProvider.provide(null, project);
+
+				((ForgeMinecraftProvider) minecraftProvider).getPatchedProvider().provide(configContext.serviceFactory());
+			}
 		}
 
 		if (extension.isForgeLike()) {
