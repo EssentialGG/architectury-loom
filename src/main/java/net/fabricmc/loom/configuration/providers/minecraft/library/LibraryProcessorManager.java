@@ -35,6 +35,7 @@ import org.jetbrains.annotations.VisibleForTesting;
 
 import net.fabricmc.loom.configuration.providers.minecraft.library.processors.ArmNativesLibraryProcessor;
 import net.fabricmc.loom.configuration.providers.minecraft.library.processors.LWJGL2MavenLibraryProcessor;
+import net.fabricmc.loom.configuration.providers.minecraft.library.processors.LWJGL2UpgradeLibraryProcessor;
 import net.fabricmc.loom.configuration.providers.minecraft.library.processors.LWJGL3UpgradeLibraryProcessor;
 import net.fabricmc.loom.configuration.providers.minecraft.library.processors.LegacyASMLibraryProcessor;
 import net.fabricmc.loom.configuration.providers.minecraft.library.processors.LoomNativeSupportLibraryProcessor;
@@ -50,6 +51,7 @@ public class LibraryProcessorManager {
 			LegacyASMLibraryProcessor::new,
 			LoomNativeSupportLibraryProcessor::new,
 			LWJGL2MavenLibraryProcessor::new,
+			LWJGL2UpgradeLibraryProcessor::new,
 			LWJGL3UpgradeLibraryProcessor::new,
 			ObjcBridgeUpgradeLibraryProcessor::new,
 			RuntimeLog4jLibraryProcessor::new
