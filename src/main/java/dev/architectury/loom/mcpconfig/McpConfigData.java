@@ -54,7 +54,7 @@ public record McpConfigData(
 	public static McpConfigData fromJson(JsonObject json) {
 		String version = json.get("version").getAsString();
 		JsonObject data = json.getAsJsonObject("data");
-		String mappingsPath = json.has("mappings") ? data.get("mappings").getAsString() : null;
+		String mappingsPath = data.has("mappings") ? data.get("mappings").getAsString() : null;
 		boolean official = mappingsPath == null || json.has("official") && json.getAsJsonPrimitive("official").getAsBoolean();
 
 		JsonObject stepsJson = json.getAsJsonObject("steps");
