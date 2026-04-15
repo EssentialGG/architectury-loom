@@ -79,7 +79,7 @@ public class LWJGL2UpgradeLibraryProcessor extends LibraryProcessor {
 		legacyFabricLWJGL(repositories);
 	}
 
-	private static void legacyFabricLWJGL(RepositoryHandler repositories) {
+	public static void legacyFabricLWJGL(RepositoryHandler repositories) {
 		if (repositories.findByName("LegacyFabricLWJGL") != null) {
 			// Already applied.
 			return;
